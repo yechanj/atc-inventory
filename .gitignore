@@ -1,0 +1,17 @@
+node_modules
+.next
+out
+build
+*.log
+.env
+.DS_Store
+
+# Prisma / SQLite local DB
+prisma/dev.db
+prisma/dev.db-journal
+
+# 루트 폰트 원본 (public/fonts/ 에 복사본 있음)
+*.otf
+*.ttf
+!public/fonts/*.otf
+!public/fonts/*.ttf

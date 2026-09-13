@@ -1,0 +1,130 @@
+// ATC 카세트 재고·보충 관리 — 데이터 모델
+// SQLite(MVP) → 추후 PostgreSQL 전환 시 provider만 변경.
+// 멀티테넌시(hospitalId)·다호기(machineId)를 처음부터 반영.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Hospital {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+
+  machines  Machine[]
+  snapshots UsageSnapshot[]
+  users     User[]
+}
+
+model User {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  passwordHash String
+  hospitalId   String
+  createdAt    DateTime @default(now())
+
+  hospital     Hospital @relation(fields: [hospitalId], references: [id])
+}
+
+model Machine {
+  id         String   @id @default(cuid())
+  hospitalId String
+  name       String // 예: "1호기"
+  createdAt  DateTime @default(now())
+
+  hospital  Hospital   @relation(fields: [hospitalId], references: [id])
+  cassettes Cassette[]
+
+  @@unique([hospitalId, name])
+}
+
+model Cassette {
+  id              String    @id @default(cuid())
+  machineId       String
+  cassetteNumber  Int
+  drugCode        String?
+  drugName        String
+  currentInventory Float    @default(0)
+  packageSize     Float     @default(100)
+  refillThreshold Float     @default(200)
+  targetInventory Float     @default(800)
+  trackingStatus  Boolean   @default(true) // 추적 여부
+  needsReview     Boolean   @default(false) // 확인 필요(음수 clamp/감소 등)
+  lastAdjustedAt  DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  machine   Machine            @relation(fields: [machineId], references: [id])
+  history   InventoryHistory[]
+  snapLines UsageSnapshotLine[]
+
+  @@unique([machineId, cassetteNumber])
+  @@index([drugCode])
+}
+
+model UsageSnapshot {
+  id               String    @id @default(cuid())
+  hospitalId       String
+  uploadedAt       DateTime  @default(now())
+  originalFilename String
+  fileHash         String // 원본 바이트 SHA-256 — 동일 파일 중복 반영 차단
+  queryPeriodStart DateTime?
+  queryPeriodEnd   DateTime?
+  status           String    @default("PENDING") // PENDING | APPLIED | CANCELED
+  appliedAt        DateTime?
+  note             String?
+
+  hospital Hospital            @relation(fields: [hospitalId], references: [id])
+  lines    UsageSnapshotLine[]
+  history  InventoryHistory[]
+
+  @@unique([hospitalId, fileHash])
+  @@index([status])
+}
+
+model UsageSnapshotLine {
+  id              String  @id @default(cuid())
+  snapshotId      String
+  cassetteId      String?
+  machineName     String
+  cassetteNumber  Int?
+  drugCode        String?
+  drugName        String
+  cumulativeUsage Float
+  count           Int?
+  matchStatus     String // MATCHED | UNMATCHED | NO_CASSETTE
+  previousUsage   Float? // 직전 APPLIED 스냅샷의 누적값
+  newUsage        Float? // 반영될 신규 사용량
+  decreaseFlag    Boolean @default(false)
+  applied         Boolean @default(false)
+
+  snapshot UsageSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+  cassette Cassette?     @relation(fields: [cassetteId], references: [id])
+
+  @@index([snapshotId])
+  @@index([cassetteId])
+}
+
+model InventoryHistory {
+  id             String   @id @default(cuid())
+  cassetteId     String
+  type           String // USAGE | REFILL | MANUAL_ADJUSTMENT | INITIAL_INVENTORY | STOCKTAKE
+  quantityBefore Float
+  changeQuantity Float
+  quantityAfter  Float
+  snapshotId     String?
+  memo           String?
+  createdAt      DateTime @default(now())
+
+  cassette Cassette       @relation(fields: [cassetteId], references: [id])
+  snapshot UsageSnapshot? @relation(fields: [snapshotId], references: [id])
+
+  @@index([cassetteId])
+  @@index([type])
+  @@index([createdAt])
+}
