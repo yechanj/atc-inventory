@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 const LINKS = [
   { href: "/cassettes", label: "전체 재고" },
   { href: "/today", label: "오늘 보충" },
+  { href: "/refill", label: "보충 입력" },
   { href: "/upload", label: "사용량 업로드" },
   { href: "/history", label: "변동 기록" },
 ];
