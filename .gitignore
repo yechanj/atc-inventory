@@ -15,3 +15,5 @@ prisma/dev.db-journal
 *.ttf
 !public/fonts/*.otf
 !public/fonts/*.ttf
+
+sample-data

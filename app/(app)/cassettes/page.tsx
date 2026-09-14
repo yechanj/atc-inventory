@@ -68,9 +68,14 @@ function CassettesInner() {
           전체 재고{" "}
           {rows && <span className="text-base font-normal text-slate-400">({rows.length})</span>}
         </h1>
-        <Link href="/stocktake" className="btn-secondary">
-          재고조사
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link href="/analysis" className="btn-secondary">
+            사용량 분석
+          </Link>
+          <Link href="/stocktake" className="btn-secondary">
+            재고조사
+          </Link>
+        </div>
       </div>
 
       {/* 컨트롤 바 */}
