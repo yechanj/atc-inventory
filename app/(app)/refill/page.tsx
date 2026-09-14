@@ -175,7 +175,7 @@ export default function RefillPage() {
                       <button
                         ref={(el) => { itemRefs.current[idx] = el; }}
                         className={
-                          "w-full flex items-center gap-3 px-4 py-3 text-left transition " +
+                          "w-full flex items-start gap-2 px-4 py-3 text-left transition sm:items-center sm:gap-3 " +
                           (idx === highlightedIdx ? "bg-brand-50" : "hover:bg-slate-50")
                         }
                         onClick={() => selectCassette(c)}
@@ -184,11 +184,8 @@ export default function RefillPage() {
                         <span className="shrink-0 text-sm text-slate-400">
                           {c.machine.name} #{c.cassetteNumber}
                         </span>
-                        <span className="font-medium">{c.drugName}</span>
-                        {c.drugCode && (
-                          <span className="text-xs text-slate-400">{c.drugCode}</span>
-                        )}
-                        <span className="ml-auto shrink-0 text-xs text-slate-400">
+                        <span className="min-w-0 flex-1 font-medium break-keep">{c.drugName}</span>
+                        <span className="shrink-0 text-xs text-slate-400">
                           {fmt(c.packageSize)}정/통
                         </span>
                       </button>
@@ -340,7 +337,7 @@ export default function RefillPage() {
           ) : history.length === 0 ? (
             <div className="p-6 text-center text-slate-400">보충 이력이 없습니다.</div>
           ) : (
-            <div className="max-h-[420px] overflow-y-auto">
+            <div className="max-h-[420px] overflow-auto">
               <table className="tbl">
                 <thead>
                   <tr>

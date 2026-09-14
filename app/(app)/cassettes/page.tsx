@@ -74,34 +74,34 @@ function CassettesInner() {
   return (
     <div className="space-y-4">
       {/* 페이지 헤더 */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-xl font-bold tracking-tight">
           전체 재고{" "}
           {rows && <span className="text-base font-normal text-slate-400">({rows.length})</span>}
         </h1>
-        <div className="flex items-center gap-2">
-          <Link href="/today" className="btn-secondary">
+        <div className="flex flex-wrap items-center gap-2">
+          <Link href="/today" className="btn-secondary btn-xs sm:text-sm sm:px-4 sm:py-2">
             보충 필요
           </Link>
-          <Link href="/analysis" className="btn-secondary">
+          <Link href="/analysis" className="btn-secondary btn-xs sm:text-sm sm:px-4 sm:py-2">
             사용량 분석
           </Link>
-          <Link href="/stocktake" className="btn-secondary">
+          <Link href="/stocktake" className="btn-secondary btn-xs sm:text-sm sm:px-4 sm:py-2">
             재고조사
           </Link>
         </div>
       </div>
 
       {/* 컨트롤 바 */}
-      <div className="card flex flex-wrap items-center justify-between gap-3 p-4">
-        {/* 좌측: 상태 필터 탭 */}
+      <div className="card flex flex-col gap-3 p-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+        {/* 상태 필터 탭 */}
         <div className="flex flex-wrap gap-1.5">
           {FILTERS.map((f) => (
             <button
               key={f.key}
               onClick={() => setStatus(f.key)}
               className={
-                "rounded-lg px-4 py-2 text-sm font-medium transition " +
+                "rounded-lg px-3 py-1.5 text-sm font-medium transition sm:px-4 sm:py-2 " +
                 (status === f.key
                   ? "bg-brand-600 text-white shadow-sm"
                   : "bg-white text-slate-600 ring-1 ring-slate-300 hover:bg-slate-50")
@@ -111,30 +111,32 @@ function CassettesInner() {
             </button>
           ))}
         </div>
-        {/* 우측: 장비 · 정렬 · 검색 */}
-        <div className="flex items-center gap-2">
-          {machines.length > 1 && (
-            <select className="input" value={machineId} onChange={(e) => setMachineId(e.target.value)}>
-              <option value="">전체 장비</option>
-              {machines.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name} ({m._count?.cassettes ?? 0})
-                </option>
+        {/* 장비 · 정렬 · 검색 */}
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <div className="flex gap-2">
+            {machines.length > 1 && (
+              <select className="input flex-1 sm:flex-none" value={machineId} onChange={(e) => setMachineId(e.target.value)}>
+                <option value="">전체 장비</option>
+                {machines.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name} ({m._count?.cassettes ?? 0})
+                  </option>
+                ))}
+              </select>
+            )}
+            <select
+              className="input flex-1 sm:flex-none"
+              value={COL_SORT_KEYS.has(sort) ? "" : sort}
+              onChange={(e) => { if (e.target.value) setSort(e.target.value); }}
+            >
+              <option value="" disabled>정렬 기준</option>
+              {SPECIAL_SORTS.map((s) => (
+                <option key={s.key} value={s.key}>{s.label}</option>
               ))}
             </select>
-          )}
-          <select
-            className="input"
-            value={COL_SORT_KEYS.has(sort) ? "" : sort}
-            onChange={(e) => { if (e.target.value) setSort(e.target.value); }}
-          >
-            <option value="" disabled>정렬 기준</option>
-            {SPECIAL_SORTS.map((s) => (
-              <option key={s.key} value={s.key}>{s.label}</option>
-            ))}
-          </select>
-          {/* 검색: label로 아이콘+input 묶음 */}
-          <div className="flex w-64 items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-100 cursor-text">
+          </div>
+          {/* 검색 */}
+          <div className="flex w-full items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-100 cursor-text sm:w-64">
             <svg className="shrink-0 h-4 w-4 text-slate-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
               <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" />
             </svg>
@@ -157,7 +159,7 @@ function CassettesInner() {
         ) : rows.length === 0 ? (
           <div className="p-10 text-center text-slate-400">조건에 맞는 카세트가 없습니다.</div>
         ) : (
-          <div className="max-h-[calc(100vh-280px)] overflow-auto">
+          <div className="max-h-[calc(100vh-260px)] overflow-auto sm:max-h-[calc(100vh-280px)]">
             <table className="tbl">
               <thead>
                 <tr>
