@@ -43,8 +43,10 @@ export function getRecommendation(c: CassetteLike): Recommendation {
   const recommended = c.recommendedPackages ?? null;
 
   let text = "-";
-  if (needsRefill) {
-    text = recommended != null ? `${recommended}통` : "미설정";
+  if (recommended != null) {
+    text = `${recommended}통`;
+  } else if (needsRefill) {
+    text = "미설정";
   }
   return { needsRefill, recommendedPackages: recommended, text };
 }
