@@ -42,6 +42,40 @@ export async function refillCassette(params: {
   });
 }
 
+/** 소모: STS 등 낱개 사용. 현재고 감소 + CONSUMPTION 이력 기록. */
+export async function consumeCassette(params: {
+  cassetteId: string;
+  quantity: number; // 양수; 내부에서 음수로 저장
+  memo?: string;
+}): Promise<{ before: number; after: number }> {
+  const { cassetteId, quantity, memo } = params;
+  if (!(quantity > 0)) throw new Error("소모 수량은 0보다 커야 합니다.");
+
+  return prisma.$transaction(async (tx) => {
+    const cassette = await tx.cassette.findUnique({ where: { id: cassetteId } });
+    if (!cassette) throw new Error("카세트를 찾을 수 없습니다.");
+
+    const before = cassette.currentInventory;
+    const after = before - quantity;
+
+    await tx.cassette.update({
+      where: { id: cassetteId },
+      data: { currentInventory: after },
+    });
+    await tx.inventoryHistory.create({
+      data: {
+        cassetteId,
+        type: "CONSUMPTION",
+        quantityBefore: before,
+        changeQuantity: -quantity,
+        quantityAfter: after,
+        memo,
+      },
+    });
+    return { before, after };
+  });
+}
+
 /** 실재고 보정: 현재고를 직접 센 실제 수량으로 설정. */
 export async function adjustCassette(params: {
   cassetteId: string;

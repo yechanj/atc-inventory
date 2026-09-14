@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 
 const LINKS = [
   { href: "/cassettes", label: "전체 재고" },
-  { href: "/refill", label: "보충 입력" },
+  { href: "/refill", label: "입출고" },
   { href: "/upload", label: "사용량 업로드" },
   { href: "/history", label: "변동 기록" },
 ];

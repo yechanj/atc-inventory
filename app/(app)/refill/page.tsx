@@ -6,23 +6,47 @@ import { useToast } from "@/components/Toast";
 import type { Cassette, HistoryRow } from "@/lib/types";
 
 type Mode = "package" | "direct" | "full";
+type Tab = "refill" | "consume";
 
 export default function RefillPage() {
   const { toast } = useToast();
+
+  // 최상위 탭
+  const [tab, setTab] = useState<Tab>("refill");
+
+  // 공통 검색 상태
   const [q, setQ] = useState("");
   const [results, setResults] = useState<Cassette[] | null>(null);
   const [selected, setSelected] = useState<Cassette | null>(null);
+  const [highlightedIdx, setHighlightedIdx] = useState(-1);
+  const debounce = useRef<ReturnType<typeof setTimeout>>();
+  const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
+
+  // 보충 전용 상태
   const [mode, setMode] = useState<Mode>("package");
   const [packages, setPackages] = useState(1);
   const [direct, setDirect] = useState("");
   const [saveAsRecommended, setSaveAsRecommended] = useState(false);
-  const [highlightedIdx, setHighlightedIdx] = useState(-1);
+
+  // 소모 전용 상태
+  const [consumeQty, setConsumeQty] = useState("");
+  const [consumeMemo, setConsumeMemo] = useState("");
+
+  // 공통
   const [loading, setLoading] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [history, setHistory] = useState<HistoryRow[] | null>(null);
-  const debounce = useRef<ReturnType<typeof setTimeout>>();
-  const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
+  // 탭 전환 시 검색/선택 초기화
+  function switchTab(t: Tab) {
+    setTab(t);
+    setQ("");
+    setResults(null);
+    setSelected(null);
+    setHighlightedIdx(-1);
+  }
+
+  // 검색 디바운스
   useEffect(() => {
     clearTimeout(debounce.current);
     if (!q.trim()) { setResults(null); return; }
@@ -37,36 +61,116 @@ export default function RefillPage() {
     return () => clearTimeout(debounce.current);
   }, [q]);
 
+  // 이력 로드 (탭에 따라 type 변경)
   const loadHistory = useCallback(async () => {
     try {
-      const data = await apiFetch<HistoryRow[]>("/api/history?type=REFILL&limit=50");
+      const type = tab === "refill" ? "REFILL" : "CONSUMPTION";
+      const data = await apiFetch<HistoryRow[]>(`/api/history?type=${type}&limit=50`);
       setHistory(data);
     } catch {}
-  }, []);
+  }, [tab]);
 
-  useEffect(() => { loadHistory(); }, [loadHistory]);
+  useEffect(() => {
+    setHistory(null);
+    loadHistory();
+  }, [loadHistory]);
 
+  // 카세트 선택
   function selectCassette(c: Cassette) {
     setSelected(c);
-    setMode(c.fullCapacity != null ? "full" : c.packageSize > 1 ? "package" : "direct");
-    setPackages(c.recommendedPackages ?? 1);
-    setDirect("");
-    setSaveAsRecommended(false);
+    setQ("");
+    setResults(null);
+    setHighlightedIdx(-1);
+    if (tab === "refill") {
+      setMode(c.fullCapacity != null ? "full" : c.packageSize > 1 ? "package" : "direct");
+      setPackages(c.recommendedPackages ?? 1);
+      setDirect("");
+      setSaveAsRecommended(false);
+    } else {
+      setConsumeQty("");
+      setConsumeMemo("");
+    }
   }
 
   function clearSelection() {
     setSelected(null);
     setResults(null);
+    setQ("");
   }
 
-  const quantity =
-    mode === "full" ? 1 // 서버에서 계산 — 버튼 활성화용 더미값
+  // 보충 수량 계산
+  const refillQuantity =
+    mode === "full" ? 1
     : mode === "package"
       ? selected && packages > 0 ? packages * selected.packageSize : 0
       : (() => { const d = Number(direct); return Number.isFinite(d) && d > 0 ? d : 0; })();
 
+  // 보충 제출
+  async function submitRefill() {
+    if (!selected || loading || !(refillQuantity > 0)) return;
+    setLoading(true);
+    try {
+      const body =
+        mode === "full"
+          ? { fillToCapacity: true }
+          : {
+              quantity: refillQuantity,
+              memo: mode === "package" ? `${packages}통 × ${selected.packageSize}` : "직접 수량 입력",
+              ...(mode === "package" && saveAsRecommended && { recommendedPackages: packages }),
+            };
+      const result = await apiFetch<{ before: number; after: number }>(
+        `/api/cassettes/${selected.id}/refill`,
+        { method: "POST", body: JSON.stringify(body) }
+      );
+      const added = result.after - result.before;
+      toast(`보충 완료: ${selected.drugName} +${fmt(added)}정`, "success");
+      setSelected(null);
+      setPackages(1);
+      setDirect("");
+      setSaveAsRecommended(false);
+      loadHistory();
+    } catch (e) {
+      toast((e as Error).message, "error");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // 소모 제출
+  async function submitConsume() {
+    if (!selected || loading) return;
+    const qty = Number(consumeQty);
+    if (!Number.isFinite(qty) || qty <= 0) {
+      toast("소모 수량을 입력해주세요.", "error");
+      return;
+    }
+    setLoading(true);
+    try {
+      const result = await apiFetch<{ before: number; after: number }>(
+        `/api/cassettes/${selected.id}/consume`,
+        { method: "POST", body: JSON.stringify({ quantity: qty, memo: consumeMemo || undefined }) }
+      );
+      const consumed = result.before - result.after;
+      toast(`소모 기록: ${selected.drugName} −${fmt(consumed)}정`, "success");
+      setSelected(null);
+      setConsumeQty("");
+      setConsumeMemo("");
+      loadHistory();
+    } catch (e) {
+      toast((e as Error).message, "error");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // 이력 삭제
   async function deleteEntry(h: HistoryRow) {
-    if (!window.confirm(`보충 이력을 삭제하시겠습니까?\n${h.cassette.drugName} +${fmt(h.changeQuantity)}정\n\n현재고도 함께 되돌아갑니다.`)) return;
+    const label = tab === "refill" ? "보충" : "소모";
+    const sign = tab === "refill" ? "+" : "−";
+    const qty = Math.abs(h.changeQuantity);
+    if (!window.confirm(
+      `${label} 이력을 삭제하시겠습니까?\n${h.cassette.drugName} ${sign}${fmt(qty)}정\n\n현재고도 함께 되돌아갑니다.`
+    )) return;
     setDeletingId(h.id);
     try {
       await apiFetch(`/api/history/${h.id}`, { method: "DELETE" });
@@ -79,44 +183,62 @@ export default function RefillPage() {
     }
   }
 
-  async function submit() {
-    if (!selected || loading || !(quantity > 0)) return;
-    setLoading(true);
-    try {
-      const body =
-        mode === "full"
-          ? { fillToCapacity: true }
-          : {
-              quantity,
-              memo: mode === "package" ? `${packages}통 × ${selected.packageSize}` : "직접 수량 입력",
-              ...(mode === "package" && saveAsRecommended && { recommendedPackages: packages }),
-            };
-      const result = await apiFetch<{ before: number; after: number }>(
-        `/api/cassettes/${selected.id}/refill`,
-        { method: "POST", body: JSON.stringify(body) }
-      );
-      const added = result.after - result.before;
-      toast(`보충 완료: ${selected.drugName} +${fmt(added)}정`, "success");
-      setSelected(null);
-      setQ("");
-      setResults(null);
-      setPackages(1);
-      setDirect("");
-      setSaveAsRecommended(false);
-      loadHistory();
-    } catch (e) {
-      toast((e as Error).message, "error");
-    } finally {
-      setLoading(false);
+  // 검색 키보드 핸들러
+  function handleSearchKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (!results || results.length === 0) return;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setHighlightedIdx((i) => {
+        const next = Math.min(i + 1, results.length - 1);
+        itemRefs.current[next]?.scrollIntoView({ block: "nearest" });
+        return next;
+      });
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setHighlightedIdx((i) => {
+        const next = Math.max(i - 1, 0);
+        itemRefs.current[next]?.scrollIntoView({ block: "nearest" });
+        return next;
+      });
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      const target = results[highlightedIdx] ?? results[0];
+      if (target) selectCassette(target);
+    } else if (e.key === "Escape") {
+      setQ(""); setResults(null); setHighlightedIdx(-1);
     }
   }
 
   return (
     <div className="space-y-6">
-      <h1 className="text-xl font-bold tracking-tight">보충 입력</h1>
+      <h1 className="text-xl font-bold tracking-tight">입출고</h1>
 
+      {/* 보충 / 소모 탭 */}
+      <div className="flex gap-1 rounded-md bg-slate-100 p-1 text-sm">
+        <button
+          onClick={() => switchTab("refill")}
+          className={
+            "flex-1 rounded px-3 py-1.5 font-medium transition " +
+            (tab === "refill" ? "bg-white text-brand-700 shadow-sm" : "text-slate-500 hover:text-slate-700")
+          }
+        >
+          보충
+        </button>
+        <button
+          onClick={() => switchTab("consume")}
+          className={
+            "flex-1 rounded px-3 py-1.5 font-medium transition " +
+            (tab === "consume" ? "bg-white text-rose-600 shadow-sm" : "text-slate-500 hover:text-slate-700")
+          }
+        >
+          소모
+        </button>
+      </div>
+
+      {/* 입력 카드 */}
       <div className="card p-4 space-y-3">
         {!selected ? (
+          /* ── 공통 검색 ── */
           <>
             <div className="flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-100 cursor-text">
               <svg className="h-4 w-4 shrink-0 text-slate-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
@@ -128,30 +250,7 @@ export default function RefillPage() {
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
                 autoFocus
-                onKeyDown={(e) => {
-                  if (!results || results.length === 0) return;
-                  if (e.key === "ArrowDown") {
-                    e.preventDefault();
-                    setHighlightedIdx((i) => {
-                      const next = Math.min(i + 1, results.length - 1);
-                      itemRefs.current[next]?.scrollIntoView({ block: "nearest" });
-                      return next;
-                    });
-                  } else if (e.key === "ArrowUp") {
-                    e.preventDefault();
-                    setHighlightedIdx((i) => {
-                      const next = Math.max(i - 1, 0);
-                      itemRefs.current[next]?.scrollIntoView({ block: "nearest" });
-                      return next;
-                    });
-                  } else if (e.key === "Enter") {
-                    e.preventDefault();
-                    const target = results[highlightedIdx] ?? results[0];
-                    if (target) selectCassette(target);
-                  } else if (e.key === "Escape") {
-                    setQ(""); setResults(null); setHighlightedIdx(-1);
-                  }
-                }}
+                onKeyDown={handleSearchKeyDown}
               />
               {q && (
                 <button
@@ -181,13 +280,9 @@ export default function RefillPage() {
                         onClick={() => selectCassette(c)}
                         onMouseEnter={() => setHighlightedIdx(idx)}
                       >
-                        <span className="shrink-0 text-sm text-slate-400">
-                          {c.machine.name} #{c.cassetteNumber}
-                        </span>
+                        <span className="shrink-0 text-sm text-slate-400">{c.machine.name} #{c.cassetteNumber}</span>
                         <span className="min-w-0 flex-1 font-medium break-keep">{c.drugName}</span>
-                        <span className="shrink-0 text-xs text-slate-400">
-                          {fmt(c.packageSize)}정/통
-                        </span>
+                        <span className="shrink-0 text-xs text-slate-400">{fmt(c.packageSize)}정/통</span>
                       </button>
                     </li>
                   ))}
@@ -195,9 +290,9 @@ export default function RefillPage() {
               )
             )}
           </>
-        ) : (
+        ) : tab === "refill" ? (
+          /* ── 보충 입력 ── */
           <div className="space-y-4">
-            {/* 선택된 카세트 정보 */}
             <div className="flex items-start justify-between rounded-lg bg-slate-50 px-4 py-3">
               <div>
                 <p className="font-semibold text-slate-800">{selected.drugName}</p>
@@ -207,41 +302,27 @@ export default function RefillPage() {
                   {` · ${fmt(selected.packageSize)}정/통`}
                 </p>
               </div>
-              <button
-                className="text-xs text-slate-400 hover:text-slate-600 transition"
-                onClick={clearSelection}
-              >
-                변경
-              </button>
+              <button className="text-xs text-slate-400 hover:text-slate-600 transition" onClick={clearSelection}>변경</button>
             </div>
 
             {/* 입력 모드 탭 */}
             <div className="flex gap-1 rounded-md bg-slate-100 p-1 text-sm">
               <button
                 onClick={() => setMode("package")}
-                className={
-                  "flex-1 rounded px-3 py-1.5 font-medium transition " +
-                  (mode === "package" ? "bg-white text-brand-700 shadow-sm" : "text-slate-500")
-                }
+                className={"flex-1 rounded px-3 py-1.5 font-medium transition " + (mode === "package" ? "bg-white text-brand-700 shadow-sm" : "text-slate-500")}
               >
                 통(포장) 단위
               </button>
               <button
                 onClick={() => setMode("direct")}
-                className={
-                  "flex-1 rounded px-3 py-1.5 font-medium transition " +
-                  (mode === "direct" ? "bg-white text-brand-700 shadow-sm" : "text-slate-500")
-                }
+                className={"flex-1 rounded px-3 py-1.5 font-medium transition " + (mode === "direct" ? "bg-white text-brand-700 shadow-sm" : "text-slate-500")}
               >
                 직접 수량 입력
               </button>
               {selected.fullCapacity != null && (
                 <button
                   onClick={() => setMode("full")}
-                  className={
-                    "flex-1 rounded px-3 py-1.5 font-medium transition " +
-                    (mode === "full" ? "bg-white text-brand-700 shadow-sm" : "text-slate-500")
-                  }
+                  className={"flex-1 rounded px-3 py-1.5 font-medium transition " + (mode === "full" ? "bg-white text-brand-700 shadow-sm" : "text-slate-500")}
                 >
                   만충 보충
                 </button>
@@ -257,9 +338,7 @@ export default function RefillPage() {
                     className="px-3 py-2 text-lg font-medium text-slate-600 hover:bg-slate-100 transition disabled:opacity-30"
                     onClick={() => setPackages((p) => Math.max(0, p - 1))}
                     disabled={packages <= 0}
-                  >
-                    −
-                  </button>
+                  >−</button>
                   <input
                     className="w-16 bg-white py-2 text-center text-base font-semibold outline-none"
                     type="number"
@@ -274,15 +353,11 @@ export default function RefillPage() {
                     type="button"
                     className="px-3 py-2 text-lg font-medium text-slate-600 hover:bg-slate-100 transition"
                     onClick={() => setPackages((p) => p + 1)}
-                  >
-                    +
-                  </button>
+                  >+</button>
                 </div>
                 <span className="text-sm text-slate-600">
                   통 × {fmt(selected.packageSize)}정
-                  {quantity > 0 && (
-                    <> = <b className="text-slate-800">{fmt(quantity)}정</b></>
-                  )}
+                  {refillQuantity > 0 && <> = <b className="text-slate-800">{fmt(refillQuantity)}정</b></>}
                 </span>
               </div>
             ) : mode === "direct" ? (
@@ -305,7 +380,6 @@ export default function RefillPage() {
               </div>
             )}
 
-            {/* 권장 보충량 미설정 시 저장 체크박스 */}
             {mode === "package" && packages > 0 && selected.recommendedPackages === null && (
               <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer select-none">
                 <input
@@ -320,22 +394,71 @@ export default function RefillPage() {
 
             <button
               className="btn-primary w-full"
-              onClick={submit}
-              disabled={loading || !(quantity > 0)}
+              onClick={submitRefill}
+              disabled={loading || !(refillQuantity > 0)}
             >
               {loading ? "처리 중…" : "보충 기록"}
+            </button>
+          </div>
+        ) : (
+          /* ── 소모 입력 ── */
+          <div className="space-y-4">
+            <div className="flex items-start justify-between rounded-lg bg-rose-50 px-4 py-3">
+              <div>
+                <p className="font-semibold text-slate-800">{selected.drugName}</p>
+                <p className="mt-0.5 text-sm text-slate-500">
+                  {selected.machine.name} #{selected.cassetteNumber}
+                  {selected.drugCode && ` · ${selected.drugCode}`}
+                  {` · 현재고 ${fmt(selected.currentInventory)}정`}
+                </p>
+              </div>
+              <button className="text-xs text-slate-400 hover:text-slate-600 transition" onClick={clearSelection}>변경</button>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <input
+                className="input w-28 num"
+                type="number"
+                min={1}
+                value={consumeQty}
+                onChange={(e) => setConsumeQty(e.target.value)}
+                placeholder="소모 수량"
+                autoFocus
+              />
+              <span className="text-sm text-slate-500">정</span>
+            </div>
+
+            <input
+              className="input w-full"
+              type="text"
+              placeholder="메모 (선택) — 예: STS 교체"
+              value={consumeMemo}
+              onChange={(e) => setConsumeMemo(e.target.value)}
+            />
+
+            <button
+              className="btn-danger w-full"
+              onClick={submitConsume}
+              disabled={loading || !(Number(consumeQty) > 0)}
+            >
+              {loading ? "처리 중…" : "소모 기록"}
             </button>
           </div>
         )}
       </div>
 
+      {/* 이력 */}
       <div className="space-y-2">
-        <h2 className="text-base font-semibold text-slate-700">보충 이력</h2>
+        <h2 className="text-base font-semibold text-slate-700">
+          {tab === "refill" ? "보충 이력" : "소모 이력"}
+        </h2>
         <div className="card overflow-hidden">
           {history === null ? (
             <div className="p-6 text-center text-slate-400">불러오는 중…</div>
           ) : history.length === 0 ? (
-            <div className="p-6 text-center text-slate-400">보충 이력이 없습니다.</div>
+            <div className="p-6 text-center text-slate-400">
+              {tab === "refill" ? "보충" : "소모"} 이력이 없습니다.
+            </div>
           ) : (
             <div className="max-h-[420px] overflow-auto">
               <table className="tbl">
@@ -350,27 +473,33 @@ export default function RefillPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {history.map((h) => (
-                    <tr key={h.id}>
-                      <td className="text-xs text-slate-500">{fmtDateTime(h.createdAt)}</td>
-                      <td className="text-sm">{h.cassette.machine.name} #{h.cassette.cassetteNumber}</td>
-                      <td className="font-medium">{h.cassette.drugName}</td>
-                      <td className="num font-semibold text-emerald-600">+{fmt(h.changeQuantity)}</td>
-                      <td className="text-xs text-slate-400">{h.memo ?? ""}</td>
-                      <td>
-                        <button
-                          title="삭제"
-                          disabled={deletingId === h.id}
-                          onClick={() => deleteEntry(h)}
-                          className="rounded p-1 text-slate-300 hover:bg-rose-50 hover:text-rose-500 transition disabled:opacity-40"
-                        >
-                          <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                          </svg>
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                  {history.map((h) => {
+                    const qty = Math.abs(h.changeQuantity);
+                    const isRefill = tab === "refill";
+                    return (
+                      <tr key={h.id}>
+                        <td className="text-xs text-slate-500">{fmtDateTime(h.createdAt)}</td>
+                        <td className="text-sm">{h.cassette.machine.name} #{h.cassette.cassetteNumber}</td>
+                        <td className="font-medium">{h.cassette.drugName}</td>
+                        <td className={"num font-semibold " + (isRefill ? "text-emerald-600" : "text-rose-600")}>
+                          {isRefill ? "+" : "−"}{fmt(qty)}
+                        </td>
+                        <td className="text-xs text-slate-400">{h.memo ?? ""}</td>
+                        <td>
+                          <button
+                            title="삭제"
+                            disabled={deletingId === h.id}
+                            onClick={() => deleteEntry(h)}
+                            className="rounded p-1 text-slate-300 hover:bg-rose-50 hover:text-rose-500 transition disabled:opacity-40"
+                          >
+                            <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

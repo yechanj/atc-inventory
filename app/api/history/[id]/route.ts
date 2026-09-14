@@ -19,8 +19,8 @@ export async function DELETE(
     if (!entry) return fail("이력을 찾을 수 없습니다.", 404);
     if (entry.cassette.machine.hospitalId !== hospitalId)
       return fail("권한이 없습니다.", 403);
-    if (entry.type !== "REFILL")
-      return fail("보충 이력만 삭제할 수 있습니다.", 400);
+    if (!["REFILL", "CONSUMPTION"].includes(entry.type))
+      return fail("보충·소모 이력만 삭제할 수 있습니다.", 400);
 
     await prisma.$transaction(async (tx) => {
       await tx.cassette.update({
