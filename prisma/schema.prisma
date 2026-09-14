@@ -54,6 +54,7 @@ model Cassette {
   packageSize     Float     @default(100)
   refillThreshold Float     @default(200)
   recommendedPackages Int?
+  fullCapacity    Float?    // 만충량: 카세트를 가득 채웠을 때의 약 개수. 설정 시 만충 보충 모드 활성화
   trackingStatus  Boolean   @default(true) // 추적 여부
   needsReview     Boolean   @default(false) // 확인 필요(음수 clamp/감소 등)
   lastAdjustedAt  DateTime?

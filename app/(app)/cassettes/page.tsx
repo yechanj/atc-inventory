@@ -6,7 +6,6 @@ import Link from "next/link";
 import { apiFetch, fmt } from "@/lib/client";
 import { getRecommendation } from "@/lib/status";
 import { StatusBadge } from "@/components/StatusBadge";
-import { RefillModal } from "@/components/RefillModal";
 import { AdjustModal } from "@/components/AdjustModal";
 import { SettingsModal } from "@/components/SettingsModal";
 import type { Cassette, Machine } from "@/lib/types";
@@ -18,11 +17,16 @@ const FILTERS = [
   { key: "UNTRACKED", label: "미추적" },
   { key: "REVIEW", label: "확인 필요" },
 ];
-const SORTS = [
-  { key: "cassette", label: "카세트번호" },
-  { key: "inventory", label: "현재고" },
+const SPECIAL_SORTS = [
+  { key: "inventory", label: "현재고순" },
   { key: "shortage", label: "재고 부족순" },
 ];
+
+const COL_SORT_KEYS = new Set([
+  "cassette", "cassette_asc", "cassette_desc",
+  "drugCode_asc", "drugCode_desc",
+  "drugName_asc", "drugName_desc",
+]);
 
 function CassettesInner() {
   const sp = useSearchParams();
@@ -34,7 +38,6 @@ function CassettesInner() {
   const [rows, setRows] = useState<Cassette[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const [refillTarget, setRefillTarget] = useState<Cassette | null>(null);
   const [adjustTarget, setAdjustTarget] = useState<Cassette | null>(null);
   const [settingsTarget, setSettingsTarget] = useState<Cassette | null>(null);
 
@@ -60,6 +63,14 @@ function CassettesInner() {
     return () => clearTimeout(t);
   }, [load]);
 
+  function toggleSort(col: string) {
+    setSort((prev) => {
+      if (prev === `${col}_asc`) return `${col}_desc`;
+      if (prev === `${col}_desc`) return "cassette";
+      return `${col}_asc`;
+    });
+  }
+
   return (
     <div className="space-y-4">
       {/* 페이지 헤더 */}
@@ -69,6 +80,9 @@ function CassettesInner() {
           {rows && <span className="text-base font-normal text-slate-400">({rows.length})</span>}
         </h1>
         <div className="flex items-center gap-2">
+          <Link href="/today" className="btn-secondary">
+            보충 필요
+          </Link>
           <Link href="/analysis" className="btn-secondary">
             사용량 분석
           </Link>
@@ -109,11 +123,14 @@ function CassettesInner() {
               ))}
             </select>
           )}
-          <select className="input" value={sort} onChange={(e) => setSort(e.target.value)}>
-            {SORTS.map((s) => (
-              <option key={s.key} value={s.key}>
-                {s.label}
-              </option>
+          <select
+            className="input"
+            value={COL_SORT_KEYS.has(sort) ? "" : sort}
+            onChange={(e) => { if (e.target.value) setSort(e.target.value); }}
+          >
+            <option value="" disabled>정렬 기준</option>
+            {SPECIAL_SORTS.map((s) => (
+              <option key={s.key} value={s.key}>{s.label}</option>
             ))}
           </select>
           {/* 검색: label로 아이콘+input 묶음 */}
@@ -144,12 +161,12 @@ function CassettesInner() {
             <table className="tbl">
               <thead>
                 <tr>
-                  <th>카세트</th>
-                  <th>약품명</th>
-                  <th>약품코드</th>
+                  <SortTh col="cassette" sort={sort} onToggle={toggleSort}>카세트</SortTh>
+                  <SortTh col="drugCode" sort={sort} onToggle={toggleSort}>약품코드</SortTh>
+                  <SortTh col="drugName" sort={sort} onToggle={toggleSort}>약품명</SortTh>
                   <th className="num">현재고</th>
-                  <th className="num">포장</th>
                   <th className="num">보충기준</th>
+                  <th className="num">포장</th>
                   <th className="num">권장</th>
                   <th className="center">상태</th>
                   <th className="center">작업</th>
@@ -166,25 +183,19 @@ function CassettesInner() {
                         )}
                         #{c.cassetteNumber}
                       </td>
-                      <td className="font-medium">{c.drugName}</td>
                       <td className="text-slate-500 text-sm">{c.drugCode ?? "—"}</td>
+                      <td className="font-medium">{c.drugName}</td>
                       <td className={"num font-semibold " + (rec.needsRefill ? "text-amber-700" : "")}>
                         {fmt(c.currentInventory)}
                       </td>
-                      <td className="num text-slate-500">{fmt(c.packageSize)}</td>
                       <td className="num text-slate-500">{fmt(c.refillThreshold)}</td>
+                      <td className="num text-slate-500">{fmt(c.packageSize)}</td>
                       <td className="num">{rec.text}</td>
                       <td className="text-center">
                         <StatusBadge cassette={c} />
                       </td>
                       <td>
                         <div className="flex items-center justify-center gap-2">
-                          <button
-                            className="rounded-lg bg-brand-600 px-4 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-brand-700 transition"
-                            onClick={() => setRefillTarget(c)}
-                          >
-                            보충
-                          </button>
                           <button
                             className="rounded-lg bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-700 ring-1 ring-slate-200 hover:bg-slate-200 transition"
                             onClick={() => setAdjustTarget(c)}
@@ -212,7 +223,6 @@ function CassettesInner() {
         )}
       </div>
 
-      <RefillModal cassette={refillTarget} onClose={() => setRefillTarget(null)} onDone={load} />
       <AdjustModal cassette={adjustTarget} onClose={() => setAdjustTarget(null)} onDone={load} />
       <SettingsModal cassette={settingsTarget} onClose={() => setSettingsTarget(null)} onDone={load} />
     </div>
@@ -224,5 +234,40 @@ export default function CassettesPage() {
     <Suspense fallback={<div className="p-8 text-center text-slate-400">불러오는 중…</div>}>
       <CassettesInner />
     </Suspense>
+  );
+}
+
+function SortTh({
+  col, sort, onToggle, children,
+}: {
+  col: string;
+  sort: string;
+  onToggle: (col: string) => void;
+  children: React.ReactNode;
+}) {
+  const asc = sort === `${col}_asc` || (col === "cassette" && sort === "cassette");
+  const desc = sort === `${col}_desc`;
+  return (
+    <th
+      className="cursor-pointer select-none hover:bg-slate-50 transition"
+      onClick={() => onToggle(col)}
+    >
+      <span className="inline-flex items-center gap-1">
+        {children}
+        {asc ? (
+          <svg className="h-3 w-3 text-brand-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 15.75l7.5-7.5 7.5 7.5" />
+          </svg>
+        ) : desc ? (
+          <svg className="h-3 w-3 text-brand-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+          </svg>
+        ) : (
+          <svg className="h-3 w-3 text-slate-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 15L12 18.75 15.75 15M8.25 9L12 5.25 15.75 9" />
+          </svg>
+        )}
+      </span>
+    </th>
   );
 }

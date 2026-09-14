@@ -8,6 +8,7 @@ export interface Cassette {
   packageSize: number;
   refillThreshold: number;
   recommendedPackages: number | null;
+  fullCapacity: number | null;
   trackingStatus: boolean;
   needsReview: boolean;
   lastAdjustedAt: string | null;

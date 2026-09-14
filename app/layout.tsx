@@ -3,7 +3,7 @@ import "./globals.css";
 import { ToastProvider } from "@/components/Toast";
 
 export const metadata: Metadata = {
-  title: "ATC 재고 관리",
+  title: "PharmAssi",
   description: "ATC 카세트 재고·보충 관리",
 };
 

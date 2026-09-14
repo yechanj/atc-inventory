@@ -31,7 +31,7 @@ export default function TodayPage() {
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-bold">
-          오늘 보충 필요{" "}
+          보충 필요{" "}
           {rows && <span className="text-brand-700">{rows.length}개</span>}
         </h1>
         <Link href="/upload" className="btn-secondary">

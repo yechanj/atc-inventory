@@ -40,7 +40,7 @@ export default function LoginPage() {
       <div className="w-full max-w-sm">
         {/* 로고 */}
         <div className="mb-8 text-center">
-          <span className="font-omyu text-4xl text-brand-700">ATC 재고</span>
+          <span className="font-omyu text-4xl text-brand-700">PharmAssi</span>
           <p className="mt-2 text-sm text-slate-500">카세트 재고·보충 관리 시스템</p>
         </div>
 

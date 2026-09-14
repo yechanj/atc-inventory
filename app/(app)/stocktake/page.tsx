@@ -4,16 +4,26 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch, fmt } from "@/lib/client";
 import { useToast } from "@/components/Toast";
 import { ConfirmModal } from "@/components/Modal";
-import type { Cassette } from "@/lib/types";
+import type { Cassette, Machine } from "@/lib/types";
 
 export default function StocktakePage() {
   const { toast } = useToast();
   const [rows, setRows] = useState<Cassette[] | null>(null);
+  const [machines, setMachines] = useState<Machine[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [values, setValues] = useState<Record<string, string>>({});
   const [confirm, setConfirm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [onlyDiff, setOnlyDiff] = useState(false);
+
+  // 카세트 추가 폼
+  const [showAdd, setShowAdd] = useState(false);
+  const [addMachineId, setAddMachineId] = useState("");
+  const [addNumber, setAddNumber] = useState("");
+  const [addDrugName, setAddDrugName] = useState("");
+  const [addDrugCode, setAddDrugCode] = useState("");
+  const [addInventory, setAddInventory] = useState("");
+  const [addLoading, setAddLoading] = useState(false);
 
   const load = useCallback(async () => {
     setError(null);
@@ -29,6 +39,10 @@ export default function StocktakePage() {
 
   useEffect(() => {
     load();
+    apiFetch<Machine[]>("/api/machines").then((m) => {
+      setMachines(m);
+      if (m.length > 0) setAddMachineId(m[0].id);
+    }).catch(() => {});
   }, [load]);
 
   const entries = useMemo(() => {
@@ -67,6 +81,39 @@ export default function StocktakePage() {
     }
   }
 
+  async function addCassette() {
+    if (addLoading) return;
+    const num = Number(addNumber);
+    const inv = Number(addInventory);
+    if (!addMachineId) { toast("장비를 선택하세요.", "error"); return; }
+    if (!Number.isFinite(num) || num <= 0) { toast("카세트 번호를 입력하세요.", "error"); return; }
+    if (!Number.isFinite(inv) || inv < 0) { toast("실제재고를 입력하세요.", "error"); return; }
+    setAddLoading(true);
+    try {
+      await apiFetch("/api/cassettes", {
+        method: "POST",
+        body: JSON.stringify({
+          machineId: addMachineId,
+          cassetteNumber: num,
+          drugName: addDrugName.trim() || "(미등록)",
+          drugCode: addDrugCode.trim() || null,
+          currentInventory: inv,
+        }),
+      });
+      toast(`카세트 #${num} 등록 완료`, "success");
+      setAddNumber("");
+      setAddDrugName("");
+      setAddDrugCode("");
+      setAddInventory("");
+      setShowAdd(false);
+      await load();
+    } catch (e) {
+      toast((e as Error).message, "error");
+    } finally {
+      setAddLoading(false);
+    }
+  }
+
   const visibleRows = useMemo(() => {
     if (!rows) return [];
     if (!onlyDiff) return rows;
@@ -86,6 +133,12 @@ export default function StocktakePage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            className="btn-secondary"
+            onClick={() => setShowAdd((v) => !v)}
+          >
+            {showAdd ? "취소" : "+ 카세트 추가"}
+          </button>
           <label className="flex items-center gap-1 text-sm text-slate-600">
             <input type="checkbox" checked={onlyDiff} onChange={(e) => setOnlyDiff(e.target.checked)} />
             차이나는 것만
@@ -99,6 +152,75 @@ export default function StocktakePage() {
           </button>
         </div>
       </div>
+
+      {showAdd && (
+        <div className="card p-5">
+          <p className="mb-4 text-sm font-semibold text-slate-700">
+            미등록 카세트 추가
+            <span className="ml-2 text-xs font-normal text-slate-400">
+              업로드 시 카세트번호로 자동 연동됩니다
+            </span>
+          </p>
+          <div className="flex flex-wrap items-end gap-x-5 gap-y-4">
+            {machines.length > 1 && (
+              <Field label="장비">
+                <select
+                  className="input"
+                  value={addMachineId}
+                  onChange={(e) => setAddMachineId(e.target.value)}
+                >
+                  {machines.map((m) => (
+                    <option key={m.id} value={m.id}>{m.name}</option>
+                  ))}
+                </select>
+              </Field>
+            )}
+            <Field label="카세트번호">
+              <input
+                className="input w-32 num"
+                type="number"
+                min={1}
+                placeholder="번호"
+                value={addNumber}
+                onChange={(e) => setAddNumber(e.target.value)}
+              />
+            </Field>
+            <Field label="약품코드 (선택)">
+              <input
+                className="input w-52"
+                placeholder="모르면 비워두세요"
+                value={addDrugCode}
+                onChange={(e) => setAddDrugCode(e.target.value)}
+              />
+            </Field>
+            <Field label="약품명 (선택)">
+              <input
+                className="input w-60"
+                placeholder="모르면 비워두세요"
+                value={addDrugName}
+                onChange={(e) => setAddDrugName(e.target.value)}
+              />
+            </Field>
+            <Field label="실제재고 (정)">
+              <input
+                className="input w-32 num"
+                type="number"
+                min={0}
+                placeholder="0"
+                value={addInventory}
+                onChange={(e) => setAddInventory(e.target.value)}
+              />
+            </Field>
+            <button
+              className="btn-primary mb-0.5"
+              onClick={addCassette}
+              disabled={addLoading}
+            >
+              {addLoading ? "등록 중…" : "등록"}
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="card overflow-hidden">
         {error ? (
@@ -128,7 +250,12 @@ export default function StocktakePage() {
                       <td className="font-medium">
                         {c.machine.name} #{c.cassetteNumber}
                       </td>
-                      <td>{c.drugName}</td>
+                      <td>
+                        {c.drugName}
+                        {c.drugName === "(미등록)" && (
+                          <span className="ml-1 text-xs text-slate-400">(약품 미연동)</span>
+                        )}
+                      </td>
                       <td className="num text-slate-500">{fmt(c.currentInventory)}</td>
                       <td className="num">
                         <input
@@ -179,6 +306,15 @@ export default function StocktakePage() {
           </>
         }
       />
+    </div>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="text-xs font-medium text-slate-500">{label}</span>
+      {children}
     </div>
   );
 }

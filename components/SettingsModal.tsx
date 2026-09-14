@@ -29,6 +29,7 @@ export function SettingsModal({
         packageSize: String(cassette.packageSize),
         refillThreshold: String(cassette.refillThreshold),
         recommendedPackages: cassette.recommendedPackages != null ? String(cassette.recommendedPackages) : "",
+        fullCapacity: cassette.fullCapacity != null ? String(cassette.fullCapacity) : "",
         currentInventory: String(cassette.currentInventory),
         trackingStatus: cassette.trackingStatus,
       });
@@ -56,6 +57,7 @@ export function SettingsModal({
           packageSize: Number(form.packageSize),
           refillThreshold: Number(form.refillThreshold),
           recommendedPackages: recPkg === "" ? null : parseInt(recPkg, 10),
+          fullCapacity: (form.fullCapacity as string).trim() === "" ? null : Number(form.fullCapacity),
           trackingStatus: form.trackingStatus,
           currentInventory: Number(form.currentInventory),
         }),
@@ -109,6 +111,12 @@ export function SettingsModal({
               placeholder="미설정"
               value={form.recommendedPackages as string}
               onChange={(e) => set("recommendedPackages", e.target.value)} />
+          </Field>
+          <Field label="만충량(정)">
+            <input className="input w-full num" type="number" min={1}
+              placeholder="미설정"
+              value={form.fullCapacity as string}
+              onChange={(e) => set("fullCapacity", e.target.value)} />
           </Field>
           <Field label="현재고 (직접 수정 시 보정 기록됨)">
             <input

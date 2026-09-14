@@ -125,6 +125,7 @@ const EDITABLE_FIELDS = [
   "packageSize",
   "refillThreshold",
   "recommendedPackages",
+  "fullCapacity",
   "trackingStatus",
 ] as const;
 
