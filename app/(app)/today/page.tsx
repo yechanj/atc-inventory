@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { apiFetch, fmt } from "@/lib/client";
-import { getRecommendation } from "@/lib/status";
+import { getRecommendation, getCassetteStatus, STATUS_BADGE, STATUS_LABEL } from "@/lib/status";
 import { RefillModal } from "@/components/RefillModal";
 import type { Cassette } from "@/lib/types";
 
@@ -65,6 +65,7 @@ export default function TodayPage() {
               <tbody>
                 {rows.map((c) => {
                   const rec = getRecommendation(c);
+                  const status = getCassetteStatus(c);
                   return (
                     <tr key={c.id}>
                       <td className="font-medium">
@@ -74,6 +75,11 @@ export default function TodayPage() {
                         {c.drugName}
                         {c.drugCode && (
                           <span className="ml-1 text-xs text-slate-400">{c.drugCode}</span>
+                        )}
+                        {status === "REVIEW" && (
+                          <span className={`ml-2 rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_BADGE.REVIEW}`}>
+                            {STATUS_LABEL.REVIEW}
+                          </span>
                         )}
                       </td>
                       <td className="num font-semibold text-amber-700">{fmt(c.currentInventory)}</td>

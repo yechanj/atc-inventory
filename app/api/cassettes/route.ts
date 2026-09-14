@@ -31,7 +31,13 @@ export async function GET(req: Request) {
     });
 
     // 상태 필터 (계산 상태 기준)
-    if (status !== "ALL") {
+    // REFILL 조회 시: 순수 REFILL + "확인필요이면서 보충기준 이하"도 포함
+    if (status === "REFILL") {
+      cassettes = cassettes.filter((c) => {
+        const s = getCassetteStatus(c);
+        return s === "REFILL" || (s === "REVIEW" && c.currentInventory <= c.refillThreshold);
+      });
+    } else if (status !== "ALL") {
       cassettes = cassettes.filter((c) => getCassetteStatus(c) === status);
     }
 

@@ -344,22 +344,31 @@ export async function applySnapshot(snapshotId: string): Promise<{
       );
     }
 
+    const applicableLines = snapshot.lines.filter(
+      (l) =>
+        l.matchStatus === "MATCHED" &&
+        l.cassetteId &&
+        !l.decreaseFlag &&
+        (l.newUsage ?? 0) > 0
+    );
+
+    // 카세트 전체를 한 번에 조회
+    const cassetteIds = applicableLines.map((l) => l.cassetteId as string);
+    const cassettes = await tx.cassette.findMany({
+      where: { id: { in: cassetteIds } },
+    });
+    const cassetteMap = new Map(cassettes.map((c) => [c.id, c]));
+
     let appliedLines = 0;
     let totalDeducted = 0;
     let clampedCassettes = 0;
 
-    for (const line of snapshot.lines) {
-      if (
-        line.matchStatus !== "MATCHED" ||
-        !line.cassetteId ||
-        line.decreaseFlag ||
-        (line.newUsage ?? 0) <= 0
-      ) {
-        continue;
-      }
-      const cassette = await tx.cassette.findUnique({
-        where: { id: line.cassetteId },
-      });
+    // 메모리에서 변경값 계산
+    const cassetteUpdates: { id: string; after: number; needsReview: boolean }[] = [];
+    const historyData: Prisma.InventoryHistoryCreateManyInput[] = [];
+
+    for (const line of applicableLines) {
+      const cassette = cassetteMap.get(line.cassetteId as string);
       if (!cassette) continue;
 
       const before = cassette.currentInventory;
@@ -375,29 +384,32 @@ export async function applySnapshot(snapshotId: string): Promise<{
         clampedCassettes += 1;
       }
 
-      await tx.cassette.update({
-        where: { id: cassette.id },
-        data: { currentInventory: after, needsReview },
-      });
-      await tx.inventoryHistory.create({
-        data: {
-          cassetteId: cassette.id,
-          type: "USAGE",
-          quantityBefore: before,
-          changeQuantity: after - before,
-          quantityAfter: after,
-          snapshotId: snapshot.id,
-          memo,
-        },
-      });
-      await tx.usageSnapshotLine.update({
-        where: { id: line.id },
-        data: { applied: true },
+      cassetteUpdates.push({ id: cassette.id, after, needsReview });
+      historyData.push({
+        cassetteId: cassette.id,
+        type: "USAGE",
+        quantityBefore: before,
+        changeQuantity: after - before,
+        quantityAfter: after,
+        snapshotId: snapshot.id,
+        memo,
       });
 
       appliedLines += 1;
       totalDeducted += before - after;
     }
+
+    // 쓰기 작업을 병렬 실행
+    await Promise.all([
+      ...cassetteUpdates.map(({ id, after, needsReview }) =>
+        tx.cassette.update({ where: { id }, data: { currentInventory: after, needsReview } })
+      ),
+      tx.inventoryHistory.createMany({ data: historyData }),
+      tx.usageSnapshotLine.updateMany({
+        where: { id: { in: applicableLines.map((l) => l.id) } },
+        data: { applied: true },
+      }),
+    ]);
 
     await tx.usageSnapshot.update({
       where: { id: snapshot.id },
@@ -405,7 +417,7 @@ export async function applySnapshot(snapshotId: string): Promise<{
     });
 
     return { appliedLines, totalDeducted, clampedCassettes };
-  });
+  }, { timeout: 30000 });
 }
 
 /** PENDING 스냅샷 취소 (잘못 올린 파일 되돌리기). 레코드를 삭제해 fileHash 제약을 해제한다. */
