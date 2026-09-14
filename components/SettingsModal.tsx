@@ -28,7 +28,7 @@ export function SettingsModal({
         drugName: cassette.drugName,
         packageSize: String(cassette.packageSize),
         refillThreshold: String(cassette.refillThreshold),
-        targetInventory: String(cassette.targetInventory),
+        recommendedPackages: cassette.recommendedPackages != null ? String(cassette.recommendedPackages) : "",
         currentInventory: String(cassette.currentInventory),
         trackingStatus: cassette.trackingStatus,
       });
@@ -47,6 +47,7 @@ export function SettingsModal({
     if (loading) return;
     setLoading(true);
     try {
+      const recPkg = (form.recommendedPackages as string).trim();
       await apiFetch(`/api/cassettes/${cassette!.id}`, {
         method: "PATCH",
         body: JSON.stringify({
@@ -54,7 +55,7 @@ export function SettingsModal({
           drugName: form.drugName,
           packageSize: Number(form.packageSize),
           refillThreshold: Number(form.refillThreshold),
-          targetInventory: Number(form.targetInventory),
+          recommendedPackages: recPkg === "" ? null : parseInt(recPkg, 10),
           trackingStatus: form.trackingStatus,
           currentInventory: Number(form.currentInventory),
         }),
@@ -103,9 +104,11 @@ export function SettingsModal({
             <input className="input w-full num" type="number" value={form.refillThreshold as string}
               onChange={(e) => set("refillThreshold", e.target.value)} />
           </Field>
-          <Field label="목표재고">
-            <input className="input w-full num" type="number" value={form.targetInventory as string}
-              onChange={(e) => set("targetInventory", e.target.value)} />
+          <Field label="권장 보충량(통)">
+            <input className="input w-full num" type="number" min={1}
+              placeholder="미설정"
+              value={form.recommendedPackages as string}
+              onChange={(e) => set("recommendedPackages", e.target.value)} />
           </Field>
           <Field label="현재고 (직접 수정 시 보정 기록됨)">
             <input

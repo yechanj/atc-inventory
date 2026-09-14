@@ -7,7 +7,7 @@ export interface Cassette {
   currentInventory: number;
   packageSize: number;
   refillThreshold: number;
-  targetInventory: number;
+  recommendedPackages: number | null;
   trackingStatus: boolean;
   needsReview: boolean;
   lastAdjustedAt: string | null;

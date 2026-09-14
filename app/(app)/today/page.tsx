@@ -57,7 +57,6 @@ export default function TodayPage() {
                   <th>카세트</th>
                   <th>약품</th>
                   <th className="num">현재고</th>
-                  <th className="num">목표</th>
                   <th className="num">권장</th>
                   <th>작업</th>
                 </tr>
@@ -83,7 +82,6 @@ export default function TodayPage() {
                         )}
                       </td>
                       <td className="num font-semibold text-amber-700">{fmt(c.currentInventory)}</td>
-                      <td className="num text-slate-500">{fmt(c.targetInventory)}</td>
                       <td className="num font-medium">{rec.text}</td>
                       <td>
                         <button className="btn-primary btn-xs" onClick={() => setRefillTarget(c)}>

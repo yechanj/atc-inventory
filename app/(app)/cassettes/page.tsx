@@ -150,7 +150,6 @@ function CassettesInner() {
                   <th className="num">현재고</th>
                   <th className="num">포장</th>
                   <th className="num">보충기준</th>
-                  <th className="num">목표</th>
                   <th className="num">권장</th>
                   <th className="center">상태</th>
                   <th className="center">작업</th>
@@ -174,7 +173,6 @@ function CassettesInner() {
                       </td>
                       <td className="num text-slate-500">{fmt(c.packageSize)}</td>
                       <td className="num text-slate-500">{fmt(c.refillThreshold)}</td>
-                      <td className="num text-slate-500">{fmt(c.targetInventory)}</td>
                       <td className="num">{rec.text}</td>
                       <td className="text-center">
                         <StatusBadge cassette={c} />

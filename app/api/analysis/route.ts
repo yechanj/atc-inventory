@@ -12,15 +12,15 @@ export interface AnalysisItem {
   drugName: string;
   n: number;
   mean: number;
-  p95: number;
+  p90: number;
   threshold: number;
   currentThreshold: number;
-  capped: boolean;
+  lowSample: boolean; // n < 10 → 직접 확인 권장
 }
 
-function computeP95(sorted: number[]): number {
+function computeP90(sorted: number[]): number {
   if (sorted.length === 0) return 0;
-  const idx = Math.ceil(0.95 * sorted.length) - 1;
+  const idx = Math.ceil(0.90 * sorted.length) - 1;
   return sorted[Math.max(0, idx)];
 }
 
@@ -110,7 +110,6 @@ export async function POST(req: Request) {
     const cassetteMap = new Map(cassettes.map((c) => [`${c.machine.name}::${c.cassetteNumber}`, c]));
 
     // 7. 통계 계산 + 응답 구성
-    const CAP_MULTIPLIER = 2.5;
     const results: AnalysisItem[] = [];
 
     for (const [shortKey, { diffs, drugName }] of merged) {
@@ -119,11 +118,9 @@ export async function POST(req: Request) {
       const n = diffs.length;
       const mean = diffs.reduce((s, v) => s + v, 0) / n;
       const sorted = [...diffs].sort((a, b) => a - b);
-      const p95 = computeP95(sorted);
-      const cap = mean * CAP_MULTIPLIER;
-      const capped = p95 > cap;
-      const raw = capped ? cap : p95;
-      const threshold = Math.round(raw / 10) * 10 || 10;
+      const p90 = computeP90(sorted);
+      const threshold = Math.round(p90 / 10) * 10 || 10;
+      const lowSample = n < 10;
 
       const cassette = cassetteMap.get(shortKey) ?? null;
 
@@ -134,10 +131,10 @@ export async function POST(req: Request) {
         drugName,
         n,
         mean: Math.round(mean * 10) / 10,
-        p95: Math.round(p95 * 10) / 10,
+        p90: Math.round(p90 * 10) / 10,
         threshold,
         currentThreshold: cassette?.refillThreshold ?? 0,
-        capped,
+        lowSample,
       });
     }
 

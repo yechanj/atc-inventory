@@ -9,8 +9,9 @@ export async function refillCassette(params: {
   cassetteId: string;
   quantity: number; // 실제 추가 수량 (packages * packageSize 또는 직접 입력)
   memo?: string;
+  recommendedPackages?: number | null; // 제공 시 카세트 권장 보충량 업데이트
 }): Promise<{ before: number; after: number }> {
-  const { cassetteId, quantity, memo } = params;
+  const { cassetteId, quantity, memo, recommendedPackages } = params;
   if (!(quantity > 0)) throw new Error("보충 수량은 0보다 커야 합니다.");
 
   return prisma.$transaction(async (tx) => {
@@ -22,7 +23,10 @@ export async function refillCassette(params: {
 
     await tx.cassette.update({
       where: { id: cassetteId },
-      data: { currentInventory: after },
+      data: {
+        currentInventory: after,
+        ...(recommendedPackages !== undefined && { recommendedPackages }),
+      },
     });
     await tx.inventoryHistory.create({
       data: {
@@ -120,7 +124,7 @@ const EDITABLE_FIELDS = [
   "drugName",
   "packageSize",
   "refillThreshold",
-  "targetInventory",
+  "recommendedPackages",
   "trackingStatus",
 ] as const;
 

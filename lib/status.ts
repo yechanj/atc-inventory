@@ -3,7 +3,7 @@ export type CassetteStatus = "NORMAL" | "REFILL" | "UNTRACKED" | "REVIEW";
 export interface CassetteLike {
   currentInventory: number;
   refillThreshold: number;
-  targetInventory: number;
+  recommendedPackages: number | null;
   packageSize: number;
   trackingStatus: boolean;
   needsReview: boolean;
@@ -34,24 +34,19 @@ export const STATUS_BADGE: Record<CassetteStatus, string> = {
 
 export interface Recommendation {
   needsRefill: boolean;
-  shortage: number; // target - current (>0면 부족)
-  packages: number; // ceil(shortage / packageSize)
-  /** 사람이 읽는 권장 보충 텍스트 (예: "5포장", "59정", "-") */
+  recommendedPackages: number | null;
   text: string;
 }
 
-/** MIN/MAX 방식 권장 보충량 계산. 강제하지 않고 표시만. */
 export function getRecommendation(c: CassetteLike): Recommendation {
   const needsRefill = c.trackingStatus && c.currentInventory <= c.refillThreshold;
-  const shortage = Math.max(0, c.targetInventory - c.currentInventory);
-  const packages =
-    c.packageSize > 0 ? Math.ceil(shortage / c.packageSize) : 0;
+  const recommended = c.recommendedPackages ?? null;
 
   let text = "-";
-  if (needsRefill && shortage > 0) {
-    text = c.packageSize > 1 ? `${packages}포장` : `${round(shortage)}정`;
+  if (needsRefill) {
+    text = recommended != null ? `${recommended}통` : "미설정";
   }
-  return { needsRefill, shortage, packages, text };
+  return { needsRefill, recommendedPackages: recommended, text };
 }
 
 /** 소수 사용량 대응: 불필요한 .0 제거 */

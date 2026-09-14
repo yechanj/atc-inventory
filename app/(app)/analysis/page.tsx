@@ -90,8 +90,8 @@ export default function AnalysisPage() {
   }, [applying, results, toast]);
 
   const matched = results.filter((r) => r.cassetteId !== null);
-  const cappedCount = results.filter((r) => r.capped).length;
-  const displayed = showCappedOnly ? results.filter((r) => r.capped) : results;
+  const cappedCount = results.filter((r) => r.lowSample).length;
+  const displayed = showCappedOnly ? results.filter((r) => r.lowSample) : results;
 
   // ── Upload phase ──────────────────────────────────────────────────
   if (phase === "upload") {
@@ -243,7 +243,7 @@ export default function AnalysisPage() {
                 <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-700">
                   ⚠ {cappedCount}
                 </span>
-                캡 항목만 보기
+                샘플 부족만 보기
               </span>
             </label>
           )}
@@ -258,12 +258,11 @@ export default function AnalysisPage() {
               <tr>
                 <th>카세트</th>
                 <th>약품명</th>
-                <th className="num">n</th>
                 <th className="num">일평균</th>
-                <th className="num">P95</th>
+                <th className="num">P90</th>
                 <th className="num">현재 기준재고</th>
                 <th className="num">권장 기준재고</th>
-                <th className="center">캡</th>
+                <th className="center">샘플</th>
                 <th className="center">매칭</th>
               </tr>
             </thead>
@@ -271,25 +270,23 @@ export default function AnalysisPage() {
               {displayed.map((item, idx) => (
                 <tr
                   key={idx}
-                  className={item.capped ? "border-l-2 border-l-amber-400" : ""}
+                  className={item.lowSample ? "border-l-2 border-l-amber-400" : ""}
                 >
                   <td className="font-medium text-slate-700">
                     {item.machineName} #{item.cassetteNumber}
                   </td>
                   <td>{item.drugName}</td>
-                  <td className={`num ${item.n < 5 ? "text-slate-400" : "text-slate-500"}`}>
-                    {item.n}
-                    {item.n < 5 && <span className="ml-1 text-xs">⚠</span>}
-                  </td>
                   <td className="num text-slate-500">{fmt(item.mean)}</td>
-                  <td className="num text-slate-500">{fmt(item.p95)}</td>
+                  <td className="num text-slate-500">{fmt(item.p90)}</td>
                   <td className="num text-slate-500">{fmt(item.currentThreshold)}</td>
                   <td className="num font-semibold text-brand-700">{fmt(item.threshold)}</td>
                   <td className="center text-center">
-                    {item.capped && (
+                    {item.lowSample ? (
                       <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
-                        ⚠ 캡
+                        ⚠ n={item.n}
                       </span>
+                    ) : (
+                      <span className="text-xs text-slate-400">{item.n}</span>
                     )}
                   </td>
                   <td className="center text-center">
@@ -323,7 +320,7 @@ export default function AnalysisPage() {
           )}
           {cappedCount > 0 && (
             <span className="ml-3 text-amber-600">
-              ⚠ {cappedCount}개 캡 적용 — 직접 확인 권장
+              ⚠ {cappedCount}개 샘플 부족 — 직접 확인 권장
             </span>
           )}
         </div>

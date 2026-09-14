@@ -14,7 +14,7 @@ export async function GET() {
       select: {
         currentInventory: true,
         refillThreshold: true,
-        targetInventory: true,
+        recommendedPackages: true,
         packageSize: true,
         trackingStatus: true,
         needsReview: true,

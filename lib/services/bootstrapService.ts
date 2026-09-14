@@ -13,7 +13,6 @@ export interface BootstrapDefaults {
   initialInventory?: number;
   packageSize?: number;
   refillThreshold?: number;
-  targetInventory?: number;
 }
 
 interface Candidate {
@@ -33,7 +32,6 @@ export async function bootstrapFromBuffers(params: {
   const initialInventory = defaults.initialInventory ?? 1000;
   const packageSize = defaults.packageSize ?? 100;
   const refillThreshold = defaults.refillThreshold ?? 200;
-  const targetInventory = defaults.targetInventory ?? 800;
 
   // machineName -> cassetteNumber -> (drugCode -> Candidate)
   const master = new Map<string, Map<number, Map<string, Candidate>>>();
@@ -100,7 +98,6 @@ export async function bootstrapFromBuffers(params: {
             currentInventory: initialInventory,
             packageSize,
             refillThreshold,
-            targetInventory,
           },
         });
         await tx.inventoryHistory.create({

@@ -14,6 +14,9 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       cassetteId: params.id,
       quantity,
       memo: body.memo,
+      ...(body.recommendedPackages !== undefined && {
+        recommendedPackages: body.recommendedPackages === null ? null : Number(body.recommendedPackages),
+      }),
     });
     return ok(result);
   });

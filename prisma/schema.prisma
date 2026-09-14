@@ -53,7 +53,7 @@ model Cassette {
   currentInventory Float    @default(0)
   packageSize     Float     @default(100)
   refillThreshold Float     @default(200)
-  targetInventory Float     @default(800)
+  recommendedPackages Int?
   trackingStatus  Boolean   @default(true) // 추적 여부
   needsReview     Boolean   @default(false) // 확인 필요(음수 clamp/감소 등)
   lastAdjustedAt  DateTime?
