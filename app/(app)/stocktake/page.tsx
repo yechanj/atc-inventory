@@ -15,6 +15,7 @@ export default function StocktakePage() {
   const [confirm, setConfirm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [onlyDiff, setOnlyDiff] = useState(false);
+  const [drugCodeQ, setDrugCodeQ] = useState("");
 
   // 카세트 추가 폼
   const [showAdd, setShowAdd] = useState(false);
@@ -116,12 +117,19 @@ export default function StocktakePage() {
 
   const visibleRows = useMemo(() => {
     if (!rows) return [];
-    if (!onlyDiff) return rows;
-    return rows.filter((c) => {
-      const raw = values[c.id];
-      return raw != null && raw !== "" && Number(raw) !== c.currentInventory;
-    });
-  }, [rows, values, onlyDiff]);
+    let result = rows;
+    if (drugCodeQ.trim()) {
+      const q = drugCodeQ.trim().toLowerCase();
+      result = result.filter((c) => c.drugCode?.toLowerCase().includes(q));
+    }
+    if (onlyDiff) {
+      result = result.filter((c) => {
+        const raw = values[c.id];
+        return raw != null && raw !== "" && Number(raw) !== c.currentInventory;
+      });
+    }
+    return result;
+  }, [rows, values, onlyDiff, drugCodeQ]);
 
   return (
     <div className="space-y-3">
@@ -132,7 +140,13 @@ export default function StocktakePage() {
             실제 카세트를 세어 실제재고를 입력하세요. 입력한 값만 일괄 보정됩니다.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <input
+            className="input w-40"
+            placeholder="약품코드 필터"
+            value={drugCodeQ}
+            onChange={(e) => setDrugCodeQ(e.target.value)}
+          />
           <button
             className="btn-secondary"
             onClick={() => setShowAdd((v) => !v)}

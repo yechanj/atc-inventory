@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { apiFetch, fmt } from "@/lib/client";
 import { getCassetteStatus, getRecommendation } from "@/lib/status";
@@ -43,6 +43,17 @@ export function CassettesClient({
   const [machineId, setMachineId] = useState("");
   const [adjustTarget, setAdjustTarget] = useState<Cassette | null>(null);
   const [settingsTarget, setSettingsTarget] = useState<Cassette | null>(null);
+  const [filterOpen, setFilterOpen] = useState(false);
+  const filterRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!filterOpen) return;
+    function onOutside(e: MouseEvent) {
+      if (filterRef.current && !filterRef.current.contains(e.target as Node)) setFilterOpen(false);
+    }
+    document.addEventListener("mousedown", onOutside);
+    return () => document.removeEventListener("mousedown", onOutside);
+  }, [filterOpen]);
 
   const refresh = useCallback(async () => {
     try {
@@ -128,58 +139,85 @@ export function CassettesClient({
         </div>
       </div>
 
-      <div className="card flex flex-col gap-3 p-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
-        <div className="flex flex-wrap gap-1.5">
-          {FILTERS.map((f) => (
-            <button
-              key={f.key}
-              onClick={() => setStatus(f.key)}
-              className={
-                "rounded-lg px-3 py-1.5 text-sm font-medium transition sm:px-4 sm:py-2 " +
-                (status === f.key
-                  ? "bg-brand-600 text-white shadow-sm"
-                  : "bg-white text-slate-600 ring-1 ring-slate-300 hover:bg-slate-50")
-              }
-            >
-              {f.label}
-            </button>
-          ))}
+      <div className="card flex flex-wrap items-center gap-2 p-3">
+        {/* 검색 */}
+        <div className="flex flex-1 min-w-48 items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-100 cursor-text bg-white">
+          <svg className="shrink-0 h-4 w-4 text-slate-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+            <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" />
+          </svg>
+          <input
+            autoFocus
+            className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-slate-400"
+            placeholder="카세트번호 · 약품명 · 약품코드"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+          />
         </div>
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          <div className="flex gap-2">
-            {machines.length > 1 && (
-              <select className="input flex-1 sm:flex-none" value={machineId} onChange={(e) => setMachineId(e.target.value)}>
-                <option value="">전체 장비</option>
-                {machines.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.name} ({m._count?.cassettes ?? 0})
-                  </option>
-                ))}
-              </select>
-            )}
-            <select
-              className="input flex-1 sm:flex-none"
-              value={COL_SORT_KEYS.has(sort) ? "" : sort}
-              onChange={(e) => { if (e.target.value) setSort(e.target.value); }}
-            >
-              <option value="" disabled>정렬 기준</option>
-              {SPECIAL_SORTS.map((s) => (
-                <option key={s.key} value={s.key}>{s.label}</option>
-              ))}
-            </select>
-          </div>
-          <div className="flex w-full items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-100 cursor-text sm:w-64">
-            <svg className="shrink-0 h-4 w-4 text-slate-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-              <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" />
+
+        {/* 장비 선택 */}
+        {machines.length > 1 && (
+          <select className="input" value={machineId} onChange={(e) => setMachineId(e.target.value)}>
+            <option value="">전체 장비</option>
+            {machines.map((m) => (
+              <option key={m.id} value={m.id}>{m.name} ({m._count?.cassettes ?? 0})</option>
+            ))}
+          </select>
+        )}
+
+        {/* 정렬 */}
+        <select
+          className="input"
+          value={COL_SORT_KEYS.has(sort) ? "" : sort}
+          onChange={(e) => { if (e.target.value) setSort(e.target.value); }}
+        >
+          <option value="" disabled>정렬</option>
+          {SPECIAL_SORTS.map((s) => (
+            <option key={s.key} value={s.key}>{s.label}</option>
+          ))}
+        </select>
+
+        {/* 필터 드롭다운 */}
+        <div className="relative" ref={filterRef}>
+          <button
+            onClick={() => setFilterOpen((v) => !v)}
+            className={
+              "flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition ring-1 " +
+              (status !== "ALL"
+                ? "bg-brand-600 text-white ring-brand-600 hover:bg-brand-700"
+                : "bg-white text-slate-600 ring-slate-300 hover:bg-slate-50")
+            }
+          >
+            <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3 4.5h18M7 9.5h10M11 14.5h2" />
             </svg>
-            <input
-              autoFocus
-              className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-slate-400"
-              placeholder="카세트번호 · 약품명 · 약품코드"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-            />
-          </div>
+            {status !== "ALL" && (
+              <span>{FILTERS.find((f) => f.key === status)?.label}</span>
+            )}
+          </button>
+
+          {filterOpen && (
+            <div className="absolute right-0 top-full z-20 mt-1.5 w-40 rounded-xl border border-slate-200 bg-white py-1.5 shadow-lg">
+              {FILTERS.map((f) => (
+                <button
+                  key={f.key}
+                  onClick={() => { setStatus(f.key); setFilterOpen(false); }}
+                  className={
+                    "flex w-full items-center justify-between px-4 py-2 text-sm transition " +
+                    (status === f.key
+                      ? "font-semibold text-brand-600"
+                      : "text-slate-600 hover:bg-slate-50")
+                  }
+                >
+                  {f.label}
+                  {status === f.key && (
+                    <svg className="h-3.5 w-3.5 text-brand-600" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                    </svg>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
