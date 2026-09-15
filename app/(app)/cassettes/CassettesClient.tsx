@@ -17,6 +17,7 @@ const FILTERS = [
   { key: "REVIEW", label: "확인 필요" },
 ];
 const SPECIAL_SORTS = [
+  { key: "cassette", label: "기본(카세트)순" },
   { key: "inventory", label: "현재고순" },
   { key: "shortage", label: "재고 부족순" },
 ];
@@ -167,10 +168,9 @@ export function CassettesClient({
         {/* 정렬 */}
         <select
           className="input"
-          value={COL_SORT_KEYS.has(sort) ? "" : sort}
-          onChange={(e) => { if (e.target.value) setSort(e.target.value); }}
+          value={COL_SORT_KEYS.has(sort) ? "cassette" : sort}
+          onChange={(e) => setSort(e.target.value)}
         >
-          <option value="" disabled>정렬</option>
           {SPECIAL_SORTS.map((s) => (
             <option key={s.key} value={s.key}>{s.label}</option>
           ))}
