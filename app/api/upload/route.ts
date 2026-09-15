@@ -2,7 +2,7 @@ import { getCurrentHospitalId } from "@/lib/hospital";
 import { ok, fail, handle } from "@/lib/api";
 import {
   prepareSnapshot,
-  DuplicateSnapshotError,
+  ExistingPendingError,
   ParseError,
 } from "@/lib/services/snapshotService";
 
@@ -31,9 +31,9 @@ export async function POST(req: Request) {
       });
       return ok(preview);
     } catch (e) {
-      if (e instanceof DuplicateSnapshotError) {
-        return fail("동일한 파일이 이미 업로드/반영되었습니다. 중복 반영이 차단되었습니다.", 409, {
-          code: "DUPLICATE",
+      if (e instanceof ExistingPendingError) {
+        return fail("대기 중인 파일이 있습니다. 먼저 반영하거나 취소하세요.", 409, {
+          code: "EXISTING_PENDING",
           existingId: e.existingId,
         });
       }

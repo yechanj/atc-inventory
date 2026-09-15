@@ -9,10 +9,10 @@ export async function GET() {
   return handle(async () => {
     const hospitalId = await getCurrentHospitalId();
 
-    const [pendingSnaps, appliedSnaps] = await Promise.all([
-      prisma.usageSnapshot.findMany({
+    const [pendingSnap, appliedSnaps] = await Promise.all([
+      prisma.usageSnapshot.findFirst({
         where: { hospitalId, status: "PENDING" },
-        orderBy: { uploadedAt: "asc" },
+        orderBy: { uploadedAt: "desc" },
       }),
       prisma.usageSnapshot.findMany({
         where: { hospitalId, status: "APPLIED" },
@@ -28,9 +28,7 @@ export async function GET() {
       }),
     ]);
 
-    const pending = (
-      await Promise.all(pendingSnaps.map((s) => getSnapshotPreview(s.id)))
-    ).filter(Boolean);
+    const pending = pendingSnap ? await getSnapshotPreview(pendingSnap.id) : null;
 
     return ok({ pending, recentApplied: appliedSnaps });
   });

@@ -5,7 +5,6 @@ import { getCurrentHospitalId } from "../lib/hospital";
 import {
   prepareSnapshot,
   applySnapshot,
-  DuplicateSnapshotError,
 } from "../lib/services/snapshotService";
 
 const read = (f: string) =>
@@ -26,20 +25,7 @@ async function main() {
   const a1 = await applySnapshot(p1.snapshotId);
   console.log(`  → applied lines=${a1.appliedLines} deducted=${a1.totalDeducted}`);
 
-  // 2) 중복 반영 차단 확인 (동일 0825 재업로드)
-  try {
-    await prepareSnapshot({
-      hospitalId,
-      originalFilename: "0825-again.xls",
-      buffer: read("0825.xls"),
-    });
-    console.log("  ✗ 중복 차단 실패!");
-  } catch (e) {
-    if (e instanceof DuplicateSnapshotError) console.log("  ✓ 동일 파일 중복 차단 OK");
-    else throw e;
-  }
-
-  // 3) 0901 준비 → diff (0901 총사용량이 커서 상당수 양수, 일부 감소)
+  // 2) 0901 준비 → diff (0901 총사용량이 커서 상당수 양수, 일부 감소)
   const p2 = await prepareSnapshot({
     hospitalId,
     originalFilename: "0901.xls",

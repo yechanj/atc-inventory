@@ -141,6 +141,7 @@ function CassettesInner() {
               <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" />
             </svg>
             <input
+              autoFocus
               className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-slate-400"
               placeholder="카세트번호 · 약품명 · 약품코드"
               value={q}

@@ -8,7 +8,7 @@ import { ConfirmModal } from "@/components/Modal";
 import type { Preview, PreviewLine, UploadLogEntry } from "@/lib/types";
 
 interface SnapshotState {
-  pending: Preview[];
+  pending: Preview | null;
   recentApplied: UploadLogEntry[];
 }
 
@@ -21,7 +21,6 @@ export default function UploadPage() {
   const [queryDate, setQueryDate] = useState(() => new Date().toISOString().split("T")[0]);
   const [dateModalOpen, setDateModalOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [pendingList, setPendingList] = useState<Preview[]>([]);
   const [recentApplied, setRecentApplied] = useState<UploadLogEntry[]>([]);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [dragOver, setDragOver] = useState(false);
@@ -34,12 +33,10 @@ export default function UploadPage() {
   useEffect(() => {
     apiFetch<SnapshotState>("/api/snapshots/pending")
       .then(({ pending, recentApplied: applied }) => {
-        setPendingList(pending ?? []);
         setRecentApplied(applied ?? []);
-        if (pending && pending.length > 0) {
-          const latest = pending[pending.length - 1];
-          setPreview(latest);
-          setTab(latest.applicableCount > 0 ? "apply" : latest.decreaseCount > 0 ? "decrease" : "apply");
+        if (pending) {
+          setPreview(pending);
+          setTab(pending.applicableCount > 0 ? "apply" : pending.decreaseCount > 0 ? "decrease" : "apply");
         }
       })
       .catch(() => {});
@@ -67,15 +64,14 @@ export default function UploadPage() {
       form.append("queryPeriodEnd", date);
       try {
         const data = await apiFetch<Preview>("/api/upload", { method: "POST", body: form });
-        setPendingList((prev) => [...prev, data]);
         setPreview(data);
         setDateModalOpen(false);
         setPendingFile(null);
         setTab(data.applicableCount > 0 ? "apply" : data.decreaseCount > 0 ? "decrease" : "apply");
         toast("파일을 읽었습니다. 미리보기를 확인하세요.", "info");
       } catch (e: any) {
-        if (e.code === "DUPLICATE") {
-          toast("이미 반영된 파일입니다. 중복 반영이 차단되었습니다.", "error");
+        if (e.code === "EXISTING_PENDING") {
+          toast("대기 중인 파일이 있습니다. 먼저 반영하거나 취소하세요.", "error");
         } else {
           toast(e.message, "error");
         }
@@ -111,7 +107,6 @@ export default function UploadPage() {
         },
         ...prev,
       ]);
-      setPendingList((prev) => prev.filter((p) => p.snapshotId !== preview.snapshotId));
       setConfirmApply(false);
       setPreview(null);
       router.push("/today");
@@ -125,25 +120,13 @@ export default function UploadPage() {
 
   async function cancel() {
     if (!preview) return;
-    const id = preview.snapshotId;
     try {
-      await apiFetch(`/api/snapshots/${id}/cancel`, { method: "POST" });
-      setPendingList((prev) => prev.filter((p) => p.snapshotId !== id));
+      await apiFetch(`/api/snapshots/${preview.snapshotId}/cancel`, { method: "POST" });
       toast("업로드를 취소했습니다.", "info");
     } catch (e) {
       toast((e as Error).message, "error");
     } finally {
       setPreview(null);
-    }
-  }
-
-  async function cancelById(snapshotId: string) {
-    try {
-      await apiFetch(`/api/snapshots/${snapshotId}/cancel`, { method: "POST" });
-      setPendingList((prev) => prev.filter((p) => p.snapshotId !== snapshotId));
-      toast("업로드를 취소했습니다.", "info");
-    } catch (e) {
-      toast((e as Error).message, "error");
     }
   }
 
@@ -155,7 +138,6 @@ export default function UploadPage() {
         "/api/reset",
         { method: "POST" }
       );
-      setPendingList([]);
       setPreview(null);
       setRecentApplied([]);
       setConfirmReset(false);
@@ -166,11 +148,6 @@ export default function UploadPage() {
     } finally {
       setResetting(false);
     }
-  }
-
-  function openPreview(p: Preview) {
-    setPreview(p);
-    setTab(p.applicableCount > 0 ? "apply" : p.decreaseCount > 0 ? "decrease" : "apply");
   }
 
   return (
@@ -187,43 +164,10 @@ export default function UploadPage() {
           setTab={setTab}
           onApply={() => setConfirmApply(true)}
           onCancel={cancel}
-          onBack={pendingList.length > 1 ? () => setPreview(null) : undefined}
         />
       ) : (
         /* ── 메인 레이아웃: 위(업로드) / 아래(기록) ── */
         <div className="space-y-4">
-          {/* 대기 중인 파일 */}
-          {pendingList.length > 0 && (
-            <div className="card overflow-hidden">
-              <div className="border-b border-amber-200 bg-amber-50 px-4 py-2.5 text-sm font-semibold text-amber-800">
-                반영 대기 {pendingList.length}건
-              </div>
-              <div className="divide-y divide-slate-50">
-                {pendingList.map((p) => (
-                  <div key={p.snapshotId} className="flex items-center gap-3 px-4 py-3">
-                    <DateBadge dateStr={p.queryPeriodStart} active />
-                    <div className="flex-1 min-w-0">
-                      <p className="truncate text-sm text-slate-500">{p.originalFilename}</p>
-                      <p className="text-xs text-slate-400">
-                        반영 {p.applicableCount}건
-                        {p.decreaseCount > 0 && (
-                          <span className="ml-1.5 text-amber-600">감소 {p.decreaseCount}건</span>
-                        )}
-                      </p>
-                    </div>
-                    <div className="flex gap-1 shrink-0">
-                      <button className="btn-primary btn-xs" onClick={() => openPreview(p)}>
-                        미리보기
-                      </button>
-                      <button className="btn-secondary btn-xs" onClick={() => cancelById(p.snapshotId)}>
-                        취소
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
 
           {/* 업로드 존 — 가로 레이아웃 */}
           <div
@@ -475,14 +419,12 @@ function PreviewView({
   setTab,
   onApply,
   onCancel,
-  onBack,
 }: {
   preview: Preview;
   tab: string;
   setTab: (t: any) => void;
   onApply: () => void;
   onCancel: () => void;
-  onBack?: () => void;
 }) {
   const applyLines = preview.lines.filter(
     (l) => l.matchStatus === "MATCHED" && !l.decreaseFlag && (l.newUsage ?? 0) > 0
@@ -503,9 +445,6 @@ function PreviewView({
       <div className="card p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3 flex-wrap">
-            {onBack && (
-              <button className="btn-secondary btn-xs" onClick={onBack}>← 목록</button>
-            )}
             <DateBadge dateStr={preview.queryPeriodStart} active />
             <div>
               <div className="font-semibold text-slate-700">

@@ -9,10 +9,10 @@ import type { Prisma } from "@prisma/client";
  * - 반영(apply)은 단일 트랜잭션으로 재고 차감 + history 기록 (전체 성공/전체 롤백)
  */
 
-export class DuplicateSnapshotError extends Error {
+export class ExistingPendingError extends Error {
   constructor(public existingId: string) {
-    super("동일한 파일이 이미 업로드되었습니다.");
-    this.name = "DuplicateSnapshotError";
+    super("이미 대기 중인 파일이 있습니다. 먼저 반영하거나 취소하세요.");
+    this.name = "ExistingPendingError";
   }
 }
 
@@ -70,13 +70,13 @@ export async function prepareSnapshot(params: {
 
   const parsed = parseUsageFile(buffer);
 
-  // 1) 동일 파일 중복 반영 방지 (같은 병원 내 fileHash 유일)
-  const dup = await prisma.usageSnapshot.findFirst({
-    where: { hospitalId, fileHash: parsed.fileHash },
+  // 1) 대기 중인 스냅샷이 있으면 먼저 처리하도록 차단
+  const existingPending = await prisma.usageSnapshot.findFirst({
+    where: { hospitalId, status: "PENDING" },
   });
-  if (dup) throw new DuplicateSnapshotError(dup.id);
+  if (existingPending) throw new ExistingPendingError(existingPending.id);
 
-  // 1a) 파일에 있는 신규 카세트를 마스터에 자동 추가 (기존 카세트는 건너뜀 — idempotent)
+  // 2) 파일에 있는 신규 카세트를 마스터에 자동 추가 (기존 카세트는 건너뜀 — idempotent)
   await bootstrapFromBuffers({ hospitalId, buffers: [buffer] });
 
   // 2) 직전 APPLIED 스냅샷 조회 — 같은 조회기간이 있으면 diff, 없으면(새 날짜) 전체 차감
