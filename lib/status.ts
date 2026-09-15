@@ -7,6 +7,7 @@ export interface CassetteLike {
   packageSize: number;
   trackingStatus: boolean;
   needsReview: boolean;
+  fullCapacity?: number | null;
 }
 
 /** 상태 우선순위: 미추적 > 확인필요 > 보충필요 > 정상 */
@@ -41,10 +42,13 @@ export interface Recommendation {
 export function getRecommendation(c: CassetteLike): Recommendation {
   const needsRefill = c.trackingStatus && c.currentInventory <= c.refillThreshold;
   const recommended = c.recommendedPackages ?? null;
+  const isFullMode = recommended == null && (c.fullCapacity ?? null) != null;
 
   let text = "-";
   if (recommended != null) {
     text = `${recommended}통`;
+  } else if (isFullMode) {
+    text = "FULL";
   } else if (needsRefill) {
     text = "미설정";
   }

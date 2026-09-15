@@ -32,6 +32,7 @@ export function SettingsModal({
         fullCapacity: cassette.fullCapacity != null ? String(cassette.fullCapacity) : "",
         currentInventory: String(cassette.currentInventory),
         trackingStatus: cassette.trackingStatus,
+        fullRefill: cassette.fullCapacity != null && cassette.recommendedPackages == null,
       });
     }
   }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -56,7 +57,7 @@ export function SettingsModal({
           drugName: form.drugName,
           packageSize: Number(form.packageSize),
           refillThreshold: Number(form.refillThreshold),
-          recommendedPackages: recPkg === "" ? null : parseInt(recPkg, 10),
+          recommendedPackages: (form.fullRefill as boolean) || recPkg === "" ? null : parseInt(recPkg, 10),
           fullCapacity: (form.fullCapacity as string).trim() === "" ? null : Number(form.fullCapacity),
           trackingStatus: form.trackingStatus,
           currentInventory: Number(form.currentInventory),
@@ -106,10 +107,26 @@ export function SettingsModal({
             <input className="input w-full num" type="number" value={form.refillThreshold as string}
               onChange={(e) => set("refillThreshold", e.target.value)} />
           </Field>
-          <Field label="권장 보충량(통)">
+          <Field label={
+            <span className="flex items-center justify-between">
+              권장 보충량(통)
+              <label className="flex items-center gap-1 cursor-pointer font-normal text-slate-500">
+                <input
+                  type="checkbox"
+                  checked={form.fullRefill as boolean}
+                  onChange={(e) => {
+                    set("fullRefill", e.target.checked);
+                    if (e.target.checked) set("recommendedPackages", "");
+                  }}
+                />
+                <span className="text-xs">FULL</span>
+              </label>
+            </span>
+          }>
             <input className="input w-full num" type="number" min={1}
-              placeholder="미설정"
-              value={form.recommendedPackages as string}
+              placeholder={form.fullRefill ? "FULL 모드" : "미설정"}
+              disabled={form.fullRefill as boolean}
+              value={form.fullRefill ? "" : form.recommendedPackages as string}
               onChange={(e) => set("recommendedPackages", e.target.value)} />
           </Field>
           <Field label="만충량(정)">
@@ -166,7 +183,7 @@ export function SettingsModal({
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, children }: { label: React.ReactNode; children: React.ReactNode }) {
   return (
     <div>
       <label className="label">{label}</label>

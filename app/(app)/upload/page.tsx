@@ -26,12 +26,33 @@ export default async function UploadPage() {
     }),
   ]);
 
-  const pending = pendingSnap ? await getSnapshotPreview(pendingSnap.id) : null;
+  const rawPending = pendingSnap ? await getSnapshotPreview(pendingSnap.id) : null;
+  const pending: Preview | null = rawPending
+    ? {
+        ...rawPending,
+        queryPeriodStart: rawPending.queryPeriodStart instanceof Date
+          ? rawPending.queryPeriodStart.toISOString().slice(0, 10)
+          : rawPending.queryPeriodStart ?? null,
+        queryPeriodEnd: rawPending.queryPeriodEnd instanceof Date
+          ? rawPending.queryPeriodEnd.toISOString().slice(0, 10)
+          : rawPending.queryPeriodEnd ?? null,
+      }
+    : null;
+
+  const recentApplied: UploadLogEntry[] = appliedSnaps.map((e) => ({
+    id: e.id,
+    originalFilename: e.originalFilename,
+    appliedAt: e.appliedAt instanceof Date ? e.appliedAt.toISOString() : (e.appliedAt as string | null),
+    queryPeriodStart: e.queryPeriodStart instanceof Date
+      ? e.queryPeriodStart.toISOString().slice(0, 10)
+      : (e.queryPeriodStart as string | null),
+    uploadedAt: e.uploadedAt instanceof Date ? e.uploadedAt.toISOString() : (e.uploadedAt as string),
+  }));
 
   return (
     <UploadClient
-      initialPending={pending as unknown as Preview | null}
-      initialRecentApplied={appliedSnaps as unknown as UploadLogEntry[]}
+      initialPending={pending}
+      initialRecentApplied={recentApplied}
     />
   );
 }
