@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch, fmt } from "@/lib/client";
 import { useToast } from "@/components/Toast";
 import { ConfirmModal } from "@/components/Modal";
@@ -16,6 +16,21 @@ export default function StocktakePage() {
   const [saving, setSaving] = useState(false);
   const [onlyDiff, setOnlyDiff] = useState(false);
   const [drugCodeQ, setDrugCodeQ] = useState("");
+  const drugCodeInputRef = useRef<HTMLInputElement>(null);
+  const inventoryRefs = useRef<Record<string, HTMLInputElement>>({});
+
+  // `/` 키 → 약품코드 필터로 포커스
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "/" && !(e.target instanceof HTMLInputElement) && !(e.target instanceof HTMLTextAreaElement)) {
+        e.preventDefault();
+        drugCodeInputRef.current?.focus();
+        drugCodeInputRef.current?.select();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   // 카세트 추가 폼
   const [showAdd, setShowAdd] = useState(false);
@@ -142,10 +157,16 @@ export default function StocktakePage() {
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <input
+            ref={drugCodeInputRef}
             className="input w-40"
-            placeholder="약품코드 필터"
+            placeholder="약품코드 필터  (/)"
             value={drugCodeQ}
             onChange={(e) => setDrugCodeQ(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && visibleRows.length > 0) {
+                inventoryRefs.current[visibleRows[0].id]?.focus();
+              }
+            }}
           />
           <button
             className="btn-secondary"
@@ -273,6 +294,10 @@ export default function StocktakePage() {
                       <td className="num text-slate-500">{fmt(c.currentInventory)}</td>
                       <td className="num">
                         <input
+                          ref={(el) => {
+                            if (el) inventoryRefs.current[c.id] = el;
+                            else delete inventoryRefs.current[c.id];
+                          }}
                           className="input w-24 num"
                           type="number"
                           min={0}
@@ -281,6 +306,12 @@ export default function StocktakePage() {
                           onChange={(e) =>
                             setValues((v) => ({ ...v, [c.id]: e.target.value }))
                           }
+                          onKeyDown={(e) => {
+                            if (e.key === "Escape") {
+                              drugCodeInputRef.current?.focus();
+                              drugCodeInputRef.current?.select();
+                            }
+                          }}
                         />
                       </td>
                       <td
