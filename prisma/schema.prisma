@@ -74,7 +74,7 @@ model UsageSnapshot {
   hospitalId       String
   uploadedAt       DateTime  @default(now())
   originalFilename String
-  fileHash         String // 원본 바이트 SHA-256 — 동일 파일 중복 반영 차단
+  fileHash         String
   queryPeriodStart DateTime?
   queryPeriodEnd   DateTime?
   status           String    @default("PENDING") // PENDING | APPLIED | CANCELED
@@ -85,7 +85,6 @@ model UsageSnapshot {
   lines    UsageSnapshotLine[]
   history  InventoryHistory[]
 
-  @@unique([hospitalId, fileHash])
   @@index([status])
 }
 
