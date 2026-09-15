@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { parseUsageFile, ParseError } from "@/lib/pampro/parseUsageFile";
 import { bootstrapFromBuffers } from "@/lib/services/bootstrapService";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 
 /**
  * 스냅샷(사용량 반영) 도메인 서비스.
@@ -399,11 +399,23 @@ export async function applySnapshot(snapshotId: string): Promise<{
       totalDeducted += before - after;
     }
 
-    // 쓰기 작업을 병렬 실행
+    // 카세트 재고를 단일 bulk UPDATE로 처리 (204개 개별 쿼리 → 쿼리 1개)
+    if (cassetteUpdates.length > 0) {
+      const values = cassetteUpdates.map(
+        ({ id, after, needsReview }) =>
+          Prisma.sql`(${id}::text, ${after}::float8, ${needsReview}::boolean)`
+      );
+      await tx.$executeRaw`
+        UPDATE "Cassette" AS c
+        SET "currentInventory" = v.after,
+            "needsReview"      = v.needs_review,
+            "updatedAt"        = now()
+        FROM (VALUES ${Prisma.join(values)}) AS v(id, after, needs_review)
+        WHERE c.id = v.id
+      `;
+    }
+
     await Promise.all([
-      ...cassetteUpdates.map(({ id, after, needsReview }) =>
-        tx.cassette.update({ where: { id }, data: { currentInventory: after, needsReview } })
-      ),
       tx.inventoryHistory.createMany({ data: historyData }),
       tx.usageSnapshotLine.updateMany({
         where: { id: { in: applicableLines.map((l) => l.id) } },
