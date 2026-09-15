@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 
 /**
  * 재고 변경 도메인 서비스. 모든 변경은 트랜잭션 + InventoryHistory 기록.
@@ -116,7 +117,7 @@ export async function adjustCassette(params: {
   });
 }
 
-/** 재고조사 일괄 반영: 여러 카세트를 한 트랜잭션으로 실재고 보정. */
+/** 재고조사 일괄 반영: 벌크 쿼리로 한 트랜잭션에서 처리. */
 export async function applyStocktake(params: {
   entries: { cassetteId: string; actualQuantity: number }[];
   memo?: string;
@@ -126,31 +127,55 @@ export async function applyStocktake(params: {
   if (valid.length === 0) throw new Error("반영할 실재고 값이 없습니다.");
 
   return prisma.$transaction(async (tx) => {
-    let updated = 0;
+    // 1) 카세트 한 번에 조회
+    const cassettes = await tx.cassette.findMany({
+      where: { id: { in: valid.map((e) => e.cassetteId) } },
+    });
+    const cassetteMap = new Map(cassettes.map((c) => [c.id, c]));
+
+    // 2) 변경값 메모리 계산
+    const updates: { id: string; after: number }[] = [];
+    const historyData: Prisma.InventoryHistoryCreateManyInput[] = [];
+    const now = new Date();
+
     for (const e of valid) {
-      const cassette = await tx.cassette.findUnique({ where: { id: e.cassetteId } });
+      const cassette = cassetteMap.get(e.cassetteId);
       if (!cassette) continue;
       const before = cassette.currentInventory;
       const after = e.actualQuantity;
-      if (before === after) continue; // 차이 없으면 기록하지 않음
-      await tx.cassette.update({
-        where: { id: e.cassetteId },
-        data: { currentInventory: after, lastAdjustedAt: new Date(), needsReview: false },
+      if (before === after) continue;
+      updates.push({ id: cassette.id, after });
+      historyData.push({
+        cassetteId: cassette.id,
+        type: "STOCKTAKE",
+        quantityBefore: before,
+        changeQuantity: after - before,
+        quantityAfter: after,
+        memo: memo ?? "재고조사 반영",
       });
-      await tx.inventoryHistory.create({
-        data: {
-          cassetteId: e.cassetteId,
-          type: "STOCKTAKE",
-          quantityBefore: before,
-          changeQuantity: after - before,
-          quantityAfter: after,
-          memo: memo ?? "재고조사 반영",
-        },
-      });
-      updated += 1;
     }
-    return { updated };
-  });
+
+    if (updates.length === 0) return { updated: 0 };
+
+    // 3) 벌크 UPDATE (쿼리 1개)
+    const values = updates.map(({ id, after }) =>
+      Prisma.sql`(${id}::text, ${after}::float8, ${now}::timestamptz)`
+    );
+    await tx.$executeRaw`
+      UPDATE "Cassette" AS c
+      SET "currentInventory" = v.after,
+          "lastAdjustedAt"   = v.adj_at,
+          "needsReview"      = false,
+          "updatedAt"        = now()
+      FROM (VALUES ${Prisma.join(values)}) AS v(id, after, adj_at)
+      WHERE c.id = v.id
+    `;
+
+    // 4) 이력 일괄 생성 (쿼리 1개)
+    await tx.inventoryHistory.createMany({ data: historyData });
+
+    return { updated: updates.length };
+  }, { timeout: 30000 });
 }
 
 const EDITABLE_FIELDS = [
