@@ -35,9 +35,11 @@ export default function RefillPage() {
   // 공통
   const [loading, setLoading] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [history, setHistory] = useState<HistoryRow[] | null>(null);
+  const [refillHistory, setRefillHistory] = useState<HistoryRow[] | null>(null);
+  const [consumeHistory, setConsumeHistory] = useState<HistoryRow[] | null>(null);
+  const history = tab === "refill" ? refillHistory : consumeHistory;
 
-  // 탭 전환 시 검색/선택 초기화
+  // 탭 전환 시 검색/선택 초기화 (이력은 이미 로드된 것 그대로)
   function switchTab(t: Tab) {
     setTab(t);
     setQ("");
@@ -61,19 +63,28 @@ export default function RefillPage() {
     return () => clearTimeout(debounce.current);
   }, [q]);
 
-  // 이력 로드 (탭에 따라 type 변경)
+  // 최초 마운트 시 둘 다 병렬 로드
+  useEffect(() => {
+    Promise.all([
+      apiFetch<HistoryRow[]>("/api/history?type=REFILL&limit=50"),
+      apiFetch<HistoryRow[]>("/api/history?type=CONSUMPTION&limit=50"),
+    ]).then(([refill, consume]) => {
+      setRefillHistory(refill);
+      setConsumeHistory(consume);
+    }).catch(() => {});
+  }, []);
+
   const loadHistory = useCallback(async () => {
     try {
-      const type = tab === "refill" ? "REFILL" : "CONSUMPTION";
-      const data = await apiFetch<HistoryRow[]>(`/api/history?type=${type}&limit=50`);
-      setHistory(data);
+      if (tab === "refill") {
+        const data = await apiFetch<HistoryRow[]>("/api/history?type=REFILL&limit=50");
+        setRefillHistory(data);
+      } else {
+        const data = await apiFetch<HistoryRow[]>("/api/history?type=CONSUMPTION&limit=50");
+        setConsumeHistory(data);
+      }
     } catch {}
   }, [tab]);
-
-  useEffect(() => {
-    setHistory(null);
-    loadHistory();
-  }, [loadHistory]);
 
   // 카세트 선택
   function selectCassette(c: Cassette) {
