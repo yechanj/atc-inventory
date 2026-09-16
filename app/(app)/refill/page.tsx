@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { apiFetch, fmt, fmtDateTime } from "@/lib/client";
 import { useToast } from "@/components/Toast";
 import type { Cassette, HistoryRow } from "@/lib/types";
@@ -10,6 +11,7 @@ type Tab = "refill" | "consume";
 
 export default function RefillPage() {
   const { toast } = useToast();
+  const router = useRouter();
 
   // 최상위 탭
   const [tab, setTab] = useState<Tab>("refill");
@@ -139,6 +141,7 @@ export default function RefillPage() {
       setPackages(1);
       setDirect("");
       setSaveAsRecommended(false);
+      router.refresh();
       loadHistory();
     } catch (e) {
       toast((e as Error).message, "error");
@@ -166,6 +169,7 @@ export default function RefillPage() {
       setSelected(null);
       setConsumeQty("");
       setConsumeMemo("");
+      router.refresh();
       loadHistory();
     } catch (e) {
       toast((e as Error).message, "error");
@@ -458,7 +462,6 @@ export default function RefillPage() {
         )}
       </div>
 
-      {/* 이력 */}
       <div className="space-y-2">
         <h2 className="text-base font-semibold text-slate-700">
           {tab === "refill" ? "보충 이력" : "소모 이력"}

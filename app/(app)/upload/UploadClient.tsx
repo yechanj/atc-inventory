@@ -101,6 +101,7 @@ export function UploadClient({
       ]);
       setConfirmApply(false);
       setPreview(null);
+      router.refresh();
       router.push("/today");
     } catch (e) {
       toast((e as Error).message, "error");

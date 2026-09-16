@@ -63,6 +63,8 @@ export function CassettesClient({
     } catch {}
   }, []);
 
+  useEffect(() => { refresh(); }, []);
+
   const filtered = useMemo(() => {
     let result = rows;
 

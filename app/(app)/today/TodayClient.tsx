@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { apiFetch, fmt } from "@/lib/client";
 import { getRecommendation, getCassetteStatus, STATUS_BADGE, STATUS_LABEL } from "@/lib/status";
@@ -17,6 +17,8 @@ export function TodayClient({ initialRows }: { initialRows: Cassette[] }) {
       setRows(data);
     } catch {}
   }, []);
+
+  useEffect(() => { refresh(); }, []);
 
   return (
     <div className="space-y-3">

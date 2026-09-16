@@ -10,59 +10,230 @@ export interface AnalysisItem {
   machineName: string;
   cassetteNumber: number;
   drugName: string;
-  n: number;
-  mean: number;
-  p90: number;
-  threshold: number;
+  dailyAvg30: number;       // 최근 30일 일평균 (전체 일수 기준)
+  dailyAvg30Wd: number;     // 최근 30일 일평균 (평일 일수 기준)
+  daysInWindow: number;     // 윈도우 내 실제 커버 일수
+  weekdaysInWindow: number; // 윈도우 내 평일 수
   currentThreshold: number;
-  lowSample: boolean; // n < 10 → 직접 확인 권장
+  lowSample: boolean;       // daysInWindow < 14
+  // diff를 end-date 요일에 귀속 후 요일별 평균 (excludeWeekends는 바 표시만 제어)
+  dayOfWeekUsage: number[]; // [월, 화, 수, 목, 금, 토, 일]
 }
 
-function computeP90(sorted: number[]): number {
-  if (sorted.length === 0) return 0;
-  const idx = Math.ceil(0.90 * sorted.length) - 1;
-  return sorted[Math.max(0, idx)];
+export interface AnalysisGetResponse {
+  items: AnalysisItem[];
+  snapshotCount: number;
 }
+
+// ── 공통 계산 로직 ────────────────────────────────────────────────────
+
+type TimelineMap = Map<string, { date: Date; usage: number }[]>;
+
+function computeAnalysisItems(
+  timeline: TimelineMap,
+  drugNameMap: Map<string, string>,
+  cassettes: { id: string; cassetteNumber: number; refillThreshold: number; machine: { name: string } }[]
+): AnalysisItem[] {
+  const cassetteMap = new Map(cassettes.map((c) => [`${c.machine.name}::${c.cassetteNumber}`, c]));
+
+  // shortKey별 집계: 지배적 타임라인 + 요일별 사용량 직접 값 수집
+  const shortKeyMap = new Map<
+    string,
+    { domPoints: { date: Date; usage: number }[]; domDrugName: string; dowValues: number[][] }
+  >();
+
+  for (const [key, points] of timeline) {
+    const parts = key.split("::");
+    const shortKey = `${parts[0]}::${parts[1]}`;
+    const drugName = drugNameMap.get(key) ?? "";
+
+    const dowArrays: number[][] = Array.from({ length: 7 }, () => []);
+    for (const point of points) {
+      if (point.usage > 0) {
+        const rawDay = point.date.getUTCDay(); // 0=Sun
+        const monFirst = rawDay === 0 ? 6 : rawDay - 1; // Mon=0..Sun=6
+        dowArrays[monFirst].push(point.usage);
+      }
+    }
+
+    const ex = shortKeyMap.get(shortKey);
+    if (!ex) {
+      shortKeyMap.set(shortKey, { domPoints: points, domDrugName: drugName, dowValues: dowArrays });
+    } else {
+      for (let d = 0; d < 7; d++) ex.dowValues[d].push(...dowArrays[d]);
+      if (points.length > ex.domPoints.length) {
+        ex.domPoints = points;
+        ex.domDrugName = drugName;
+      }
+    }
+  }
+
+  const results: AnalysisItem[] = [];
+
+  for (const [shortKey, { domPoints, domDrugName, dowValues }] of shortKeyMap) {
+    const hasData = domPoints.some((p) => p.usage > 0);
+    if (!hasData) continue;
+
+    const [machineName, cassetteNumberStr] = shortKey.split("::");
+    const cassetteNumber = Number(cassetteNumberStr);
+
+    // 최근 30일 윈도우 — 날짜 기준 필터
+    const endDate = domPoints[domPoints.length - 1].date;
+    const cutoff = new Date(endDate.getTime() - 30 * 86400000);
+    const windowPoints = domPoints.filter((p) => p.date >= cutoff && p.usage > 0);
+
+    const daysInWindow = windowPoints.length;
+    const totalUsage = windowPoints.reduce((s, p) => s + p.usage, 0);
+    const dailyAvg30 =
+      daysInWindow > 0 ? Math.round((totalUsage / daysInWindow) * 10) / 10 : 0;
+    const lowSample = daysInWindow < 3;
+
+    // 평일 파일만 — 주말 제외 평균
+    const weekdayPoints = windowPoints.filter((p) => {
+      const d = p.date.getUTCDay();
+      return d !== 0 && d !== 6;
+    });
+    const weekdaysInWindow = weekdayPoints.length;
+    const weekdayUsage = weekdayPoints.reduce((s, p) => s + p.usage, 0);
+    const dailyAvg30Wd =
+      weekdaysInWindow > 0
+        ? Math.round((weekdayUsage / weekdaysInWindow) * 10) / 10
+        : dailyAvg30;
+
+    const avg = (arr: number[]) =>
+      arr.length === 0 ? 0 : Math.round((arr.reduce((s: number, v: number) => s + v, 0) / arr.length) * 10) / 10;
+
+    const dayOfWeekUsage = dowValues.map(avg);
+
+    const cassette = cassetteMap.get(shortKey) ?? null;
+
+    results.push({
+      cassetteId: cassette?.id ?? null,
+      machineName,
+      cassetteNumber,
+      drugName: domDrugName,
+      dailyAvg30,
+      dailyAvg30Wd,
+      daysInWindow: Math.round(daysInWindow),
+      weekdaysInWindow,
+      currentThreshold: cassette?.refillThreshold ?? 0,
+      lowSample,
+      dayOfWeekUsage,
+    });
+  }
+
+  results.sort((a, b) => {
+    if ((a.cassetteId === null) !== (b.cassetteId === null))
+      return a.cassetteId === null ? 1 : -1;
+    if (a.machineName !== b.machineName) return a.machineName.localeCompare(b.machineName);
+    return a.cassetteNumber - b.cassetteNumber;
+  });
+
+  return results;
+}
+
+// ── GET: 저장된 스냅샷으로 자동 분석 ────────────────────────────────
+
+export async function GET() {
+  return handle(async () => {
+    const hospitalId = await getCurrentHospitalId();
+
+    const snapshots = await prisma.usageSnapshot.findMany({
+      where: { hospitalId, status: "APPLIED" },
+      select: {
+        queryPeriodEnd: true,
+        appliedAt: true,
+        lines: {
+          where: { matchStatus: "MATCHED", cassetteNumber: { not: null } },
+          select: {
+            machineName: true,
+            cassetteNumber: true,
+            drugCode: true,
+            drugName: true,
+            cumulativeUsage: true,
+          },
+        },
+      },
+      orderBy: { queryPeriodEnd: "asc" },
+    });
+
+    const snapshotCount = snapshots.length;
+
+    if (snapshotCount < 2) {
+      return ok({ items: [], snapshotCount } satisfies AnalysisGetResponse);
+    }
+
+    const timeline: TimelineMap = new Map();
+    const drugNameMap = new Map<string, string>();
+
+    for (const snap of snapshots) {
+      const date = snap.queryPeriodEnd ?? snap.appliedAt;
+      if (!date) continue;
+
+      for (const line of snap.lines) {
+        if (line.cassetteNumber == null) continue;
+        const key = `${line.machineName}::${line.cassetteNumber}::${line.drugCode ?? ""}`;
+        const arr = timeline.get(key) ?? [];
+        const existing = arr.find((x) => x.date.getTime() === date.getTime());
+        if (existing) {
+          existing.usage = Math.max(existing.usage, line.cumulativeUsage);
+        } else {
+          arr.push({ date, usage: line.cumulativeUsage });
+        }
+        timeline.set(key, arr);
+        drugNameMap.set(key, line.drugName);
+      }
+    }
+
+    const cassettes = await prisma.cassette.findMany({
+      where: { machine: { hospitalId } },
+      select: { id: true, cassetteNumber: true, refillThreshold: true, machine: { select: { name: true } } },
+    });
+
+    const items = computeAnalysisItems(timeline, drugNameMap, cassettes);
+    return ok({ items, snapshotCount } satisfies AnalysisGetResponse);
+  });
+}
+
+// ── POST: 업로드 파일로 분석 ─────────────────────────────────────────
 
 export async function POST(req: Request) {
   return handle(async () => {
     const hospitalId = await getCurrentHospitalId();
     const form = await req.formData();
 
-    // 1. 파일 + 날짜 수집
-    const entries: { buffer: Buffer; date: Date; filename: string }[] = [];
+    const entries: { buffer: Buffer; date: Date }[] = [];
     let i = 0;
     while (form.has(`file_${i}`)) {
       const file = form.get(`file_${i}`);
       const dateStr = form.get(`date_${i}`);
       if (file instanceof File && typeof dateStr === "string" && dateStr) {
         const buffer = Buffer.from(await file.arrayBuffer());
-        entries.push({ buffer, date: new Date(dateStr + "T00:00:00Z"), filename: file.name });
+        entries.push({ buffer, date: new Date(dateStr + "T00:00:00Z") });
       }
       i++;
     }
-    if (entries.length < 2) return fail("최소 2개 이상의 날짜 파일이 필요합니다.");
+    if (entries.length < 1) return fail("파일이 없습니다.");
 
-    // 2. 파싱 후 날짜순 정렬
-    const parsed = entries.map((e) => {
-      try {
-        return { date: e.date, result: parseUsageFile(e.buffer) };
-      } catch {
-        return null;
-      }
-    }).filter(Boolean) as { date: Date; result: ReturnType<typeof parseUsageFile> }[];
+    const parsed = entries
+      .map((e) => {
+        try {
+          return { date: e.date, result: parseUsageFile(e.buffer) };
+        } catch {
+          return null;
+        }
+      })
+      .filter(Boolean) as { date: Date; result: ReturnType<typeof parseUsageFile> }[];
 
     parsed.sort((a, b) => a.date.getTime() - b.date.getTime());
 
-    // 3. key별 누적값 타임라인 구성 (key = "machineName::cassetteNumber::drugCode")
-    const timeline = new Map<string, { date: Date; usage: number }[]>();
+    const timeline: TimelineMap = new Map();
     const drugNameMap = new Map<string, string>();
 
     for (const p of parsed) {
       for (const agg of p.result.aggregated) {
         const key = `${agg.machineName}::${agg.cassetteNumber}::${agg.drugCode ?? ""}`;
         const arr = timeline.get(key) ?? [];
-        // 같은 날짜 중복이면 가장 큰 값 유지
         const existing = arr.find((x) => x.date.getTime() === p.date.getTime());
         if (existing) {
           existing.usage = Math.max(existing.usage, agg.cumulativeUsage);
@@ -74,77 +245,14 @@ export async function POST(req: Request) {
       }
     }
 
-    // 4. 연속 diff 계산 (diff > 0만 수집)
-    const diffsMap = new Map<string, number[]>();
-    for (const [key, points] of timeline) {
-      const diffs: number[] = [];
-      for (let j = 1; j < points.length; j++) {
-        const diff = points[j].usage - points[j - 1].usage;
-        if (diff > 0) diffs.push(diff);
-      }
-      if (diffs.length > 0) diffsMap.set(key, diffs);
-    }
-
-    if (diffsMap.size === 0) return fail("유효한 일별 사용량 차이를 계산할 수 없습니다.");
-
-    // 5. drugCode 다른 동일 카세트 병합 → shortKey = "machineName::cassetteNumber"
-    const merged = new Map<string, { diffs: number[]; drugName: string }>();
-    for (const [key, diffs] of diffsMap) {
-      const parts = key.split("::");
-      const shortKey = `${parts[0]}::${parts[1]}`;
-      const existing = merged.get(shortKey);
-      if (existing) {
-        const prevLen = existing.diffs.length;
-        existing.diffs.push(...diffs);
-        if (diffs.length > prevLen) existing.drugName = drugNameMap.get(key) ?? existing.drugName;
-      } else {
-        merged.set(shortKey, { diffs: [...diffs], drugName: drugNameMap.get(key) ?? "" });
-      }
-    }
-
-    // 6. DB에서 카세트 전체 조회 (단일 쿼리)
     const cassettes = await prisma.cassette.findMany({
       where: { machine: { hospitalId } },
       select: { id: true, cassetteNumber: true, refillThreshold: true, machine: { select: { name: true } } },
     });
-    const cassetteMap = new Map(cassettes.map((c) => [`${c.machine.name}::${c.cassetteNumber}`, c]));
 
-    // 7. 통계 계산 + 응답 구성
-    const results: AnalysisItem[] = [];
+    const items = computeAnalysisItems(timeline, drugNameMap, cassettes);
+    if (items.length === 0) return fail("유효한 일별 사용량 차이를 계산할 수 없습니다.");
 
-    for (const [shortKey, { diffs, drugName }] of merged) {
-      const [machineName, cassetteNumberStr] = shortKey.split("::");
-      const cassetteNumber = Number(cassetteNumberStr);
-      const n = diffs.length;
-      const mean = diffs.reduce((s, v) => s + v, 0) / n;
-      const sorted = [...diffs].sort((a, b) => a - b);
-      const p90 = computeP90(sorted);
-      const threshold = Math.round(p90 / 10) * 10 || 10;
-      const lowSample = n < 10;
-
-      const cassette = cassetteMap.get(shortKey) ?? null;
-
-      results.push({
-        cassetteId: cassette?.id ?? null,
-        machineName,
-        cassetteNumber,
-        drugName,
-        n,
-        mean: Math.round(mean * 10) / 10,
-        p90: Math.round(p90 * 10) / 10,
-        threshold,
-        currentThreshold: cassette?.refillThreshold ?? 0,
-        lowSample,
-      });
-    }
-
-    results.sort((a, b) => {
-      if ((a.cassetteId === null) !== (b.cassetteId === null))
-        return a.cassetteId === null ? 1 : -1;
-      if (a.machineName !== b.machineName) return a.machineName.localeCompare(b.machineName);
-      return a.cassetteNumber - b.cassetteNumber;
-    });
-
-    return ok(results);
+    return ok(items);
   });
 }
