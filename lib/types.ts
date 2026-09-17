@@ -85,6 +85,7 @@ export interface HistoryRow {
   cassette: {
     cassetteNumber: number;
     drugName: string;
+    drugCode: string | null;
     machine: { name: string };
   };
 }

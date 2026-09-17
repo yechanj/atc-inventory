@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 export function Modal({
   open,
@@ -58,6 +58,7 @@ export function ConfirmModal({
   confirmLabel = "확인",
   danger = false,
   loading = false,
+  confirmText,
 }: {
   open: boolean;
   onClose: () => void;
@@ -67,10 +68,34 @@ export function ConfirmModal({
   confirmLabel?: string;
   danger?: boolean;
   loading?: boolean;
+  confirmText?: string;
 }) {
+  const [typed, setTyped] = useState("");
+
+  useEffect(() => {
+    if (!open) setTyped("");
+  }, [open]);
+
+  const canConfirm = !confirmText || typed === confirmText;
+
   return (
     <Modal open={open} onClose={onClose} title={title}>
       <div className="text-sm text-slate-600">{message}</div>
+      {confirmText && (
+        <div className="mt-4">
+          <label className="text-xs text-slate-500">
+            확인을 위해 <b className="text-slate-700 select-all">{confirmText}</b> 를 입력하세요
+          </label>
+          <input
+            className="input mt-1.5 w-full"
+            placeholder={confirmText}
+            value={typed}
+            onChange={(e) => setTyped(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter" && canConfirm && !loading) onConfirm(); }}
+            autoFocus
+          />
+        </div>
+      )}
       <div className="mt-5 flex justify-end gap-2">
         <button className="btn-secondary" onClick={onClose} disabled={loading}>
           취소
@@ -78,7 +103,7 @@ export function ConfirmModal({
         <button
           className={danger ? "btn-danger" : "btn-primary"}
           onClick={onConfirm}
-          disabled={loading}
+          disabled={loading || !canConfirm}
         >
           {loading ? "처리 중…" : confirmLabel}
         </button>

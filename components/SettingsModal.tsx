@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useLayoutEffect, useState } from "react";
 import { Modal, ConfirmModal } from "./Modal";
 import { useToast } from "./Toast";
 import { apiFetch, fmt } from "@/lib/client";
@@ -21,7 +21,7 @@ export function SettingsModal({
   const [confirmInv, setConfirmInv] = useState(false);
 
   const key = cassette?.id ?? "";
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (cassette) {
       setForm({
         drugCode: cassette.drugCode ?? "",
@@ -185,8 +185,8 @@ export function SettingsModal({
 
 function Field({ label, children }: { label: React.ReactNode; children: React.ReactNode }) {
   return (
-    <div>
-      <label className="label">{label}</label>
+    <div className="flex flex-col">
+      <label className="label flex-1">{label}</label>
       <div className="mt-1">{children}</div>
     </div>
   );

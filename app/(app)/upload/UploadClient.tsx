@@ -18,6 +18,19 @@ export function UploadClient({
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // 탭 재진입 시 최신 데이터 반영
+  useEffect(() => {
+    apiFetch<{ pending: Preview | null; recentApplied: UploadLogEntry[] }>("/api/upload")
+      .then(({ pending, recentApplied }) => {
+        setPreview(pending);
+        setRecentApplied(recentApplied);
+        if (pending) {
+          setTab(pending.applicableCount > 0 ? "apply" : pending.decreaseCount > 0 ? "decrease" : "apply");
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [queryDate, setQueryDate] = useState(() => new Date().toISOString().split("T")[0]);
   const [dateModalOpen, setDateModalOpen] = useState(false);
@@ -29,6 +42,8 @@ export function UploadClient({
   const [applying, setApplying] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
   const [resetting, setResetting] = useState(false);
+  const [rollbackTarget, setRollbackTarget] = useState<UploadLogEntry | null>(null);
+  const [rolling, setRolling] = useState(false);
   const [tab, setTab] = useState<"apply" | "decrease" | "unmatched" | "nocassette">(() => {
     if (!initialPending) return "apply";
     return initialPending.applicableCount > 0 ? "apply" : initialPending.decreaseCount > 0 ? "decrease" : "apply";
@@ -143,6 +158,32 @@ export function UploadClient({
     }
   }
 
+  async function rollback() {
+    if (!rollbackTarget || rolling) return;
+    setRolling(true);
+    try {
+      const res = await apiFetch<{ reversedLines: number; totalRestored: number; hasSubsequentOps: boolean }>(
+        `/api/snapshots/${rollbackTarget.id}/rollback`,
+        { method: "POST" }
+      );
+      setRecentApplied((prev) => prev.filter((e) => e.id !== rollbackTarget.id));
+      setRollbackTarget(null);
+      toast(
+        `되돌리기 완료 — ${res.reversedLines}개 카세트, ${fmt(res.totalRestored)}정 복원`,
+        "success"
+      );
+      if (res.hasSubsequentOps) {
+        toast("이후에 다른 작업이 있었으므로 변동 기록 맥락이 달라질 수 있습니다.", "info");
+      }
+      router.refresh();
+    } catch (e) {
+      toast((e as Error).message, "error");
+      setRollbackTarget(null);
+    } finally {
+      setRolling(false);
+    }
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -207,7 +248,7 @@ export function UploadClient({
               <div className="border-b border-slate-100 px-5 py-3">
                 <span className="font-semibold text-slate-700">반영 기록</span>
               </div>
-              <UploadLog entries={recentApplied} />
+              <UploadLog entries={recentApplied} onRollback={setRollbackTarget} />
             </div>
           )}
 
@@ -241,11 +282,38 @@ export function UploadClient({
         danger
         loading={resetting}
         confirmLabel="전체 초기화"
+        confirmText="초기화"
         message={
           <div>
             <p><b>모든 카세트·장비·사용량 기록</b>이 삭제됩니다.</p>
             <p className="mt-1 text-slate-500">초기화 후 파일을 업로드하면 카세트가 자동으로 생성됩니다.</p>
           </div>
+        }
+      />
+
+      <ConfirmModal
+        open={!!rollbackTarget}
+        onClose={() => setRollbackTarget(null)}
+        onConfirm={rollback}
+        title="사용량 반영 되돌리기"
+        danger
+        loading={rolling}
+        confirmLabel="되돌리기"
+        confirmText="되돌리기"
+        message={
+          rollbackTarget && (
+            <div className="space-y-2 text-sm">
+              <p>
+                <b>{rollbackTarget.originalFilename}</b> 반영분을 되돌립니다.
+              </p>
+              <p className="text-slate-500">
+                해당 업로드로 차감된 재고가 전부 복원되고 변동 기록에서 삭제됩니다.
+              </p>
+              <p className="rounded bg-amber-50 px-3 py-2 text-amber-700 text-xs">
+                ⚠ 이후에 보충·재고조사 등이 있었다면 변동 기록 맥락이 달라질 수 있습니다.
+              </p>
+            </div>
+          )
         }
       />
 
@@ -291,7 +359,7 @@ function DateBadge({ dateStr, active }: { dateStr: string | null | undefined; ac
   );
 }
 
-function UploadLog({ entries }: { entries: UploadLogEntry[] }) {
+function UploadLog({ entries, onRollback }: { entries: UploadLogEntry[]; onRollback: (e: UploadLogEntry) => void }) {
   const maxDate = entries.reduce((max, e) => {
     const d = e.queryPeriodStart ?? "";
     return d > max ? d : max;
@@ -323,6 +391,13 @@ function UploadLog({ entries }: { entries: UploadLogEntry[] }) {
               </div>
               <p className="truncate text-xs text-slate-400">{e.originalFilename}</p>
             </div>
+            <button
+              title="이 반영 되돌리기"
+              onClick={() => onRollback(e)}
+              className="shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-400 ring-1 ring-slate-200 hover:bg-rose-50 hover:text-rose-600 hover:ring-rose-200 transition"
+            >
+              되돌리기
+            </button>
           </div>
         );
       })}

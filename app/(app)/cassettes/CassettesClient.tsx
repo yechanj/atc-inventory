@@ -135,11 +135,22 @@ export function CassettesClient({
           전체 재고{" "}
           <span className="text-base font-normal text-slate-400">({filtered.length})</span>
         </h1>
-        <div className="flex flex-wrap items-center gap-2">
-          <Link href="/today" className="btn-secondary btn-xs sm:text-sm sm:px-4 sm:py-2">보충 필요</Link>
-          <Link href="/analysis" className="btn-secondary btn-xs sm:text-sm sm:px-4 sm:py-2">사용량 분석</Link>
-          <Link href="/stocktake" className="btn-secondary btn-xs sm:text-sm sm:px-4 sm:py-2">재고조사</Link>
-        </div>
+      </div>
+
+      {/* 바로가기 */}
+      <div className="grid grid-cols-3 divide-x divide-slate-200 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        <Link href="/today" className="group flex items-center justify-center gap-2 py-3.5 text-sm font-bold text-slate-600 transition hover:bg-rose-50 hover:text-rose-800">
+          <span className="h-2 w-2 rounded-full bg-rose-500 transition group-hover:bg-rose-600" />
+          보충 필요
+        </Link>
+        <Link href="/analysis" className="group flex items-center justify-center gap-2 py-3.5 text-sm font-bold text-slate-600 transition hover:bg-brand-50 hover:text-brand-700">
+          <span className="h-2 w-2 rounded-full bg-brand-500 transition group-hover:bg-brand-600" />
+          사용량 분석
+        </Link>
+        <Link href="/stocktake" className="group flex items-center justify-center gap-2 py-3.5 text-sm font-bold text-slate-600 transition hover:bg-emerald-50 hover:text-emerald-700">
+          <span className="h-2 w-2 rounded-full bg-emerald-400 transition group-hover:bg-emerald-500" />
+          재고조사
+        </Link>
       </div>
 
       <div className="card flex flex-wrap items-center gap-2 p-3">

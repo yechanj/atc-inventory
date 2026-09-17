@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
 import { apiFetch, fmt } from "@/lib/client";
 import { getRecommendation, getCassetteStatus, STATUS_BADGE, STATUS_LABEL } from "@/lib/status";
 import { RefillModal } from "@/components/RefillModal";
@@ -27,9 +26,6 @@ export function TodayClient({ initialRows }: { initialRows: Cassette[] }) {
           보충 필요{" "}
           <span className="text-brand-700">{rows.length}개</span>
         </h1>
-        <Link href="/upload" className="btn-secondary">
-          사용량 업로드
-        </Link>
       </div>
 
       <div className="card overflow-hidden">
@@ -44,8 +40,10 @@ export function TodayClient({ initialRows }: { initialRows: Cassette[] }) {
               <thead>
                 <tr>
                   <th>카세트</th>
+                  <th>약품코드</th>
                   <th>약품</th>
                   <th className="num">현재고</th>
+                  <th className="num">기준재고</th>
                   <th className="num">권장</th>
                   <th>작업</th>
                 </tr>
@@ -59,11 +57,9 @@ export function TodayClient({ initialRows }: { initialRows: Cassette[] }) {
                       <td className="font-medium">
                         {c.machine.name} #{c.cassetteNumber}
                       </td>
+                      <td className="text-slate-500 text-sm">{c.drugCode ?? "—"}</td>
                       <td>
                         {c.drugName}
-                        {c.drugCode && (
-                          <span className="ml-1 text-xs text-slate-400">{c.drugCode}</span>
-                        )}
                         {status === "REVIEW" && (
                           <span className={`ml-2 rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_BADGE.REVIEW}`}>
                             {STATUS_LABEL.REVIEW}
@@ -71,6 +67,7 @@ export function TodayClient({ initialRows }: { initialRows: Cassette[] }) {
                         )}
                       </td>
                       <td className="num font-semibold text-amber-700">{fmt(c.currentInventory)}</td>
+                      <td className="num text-slate-500">{fmt(c.refillThreshold)}</td>
                       <td className="num font-medium">{rec.text}</td>
                       <td>
                         <button className="btn-primary btn-xs" onClick={() => setRefillTarget(c)}>

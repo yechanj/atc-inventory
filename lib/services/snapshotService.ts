@@ -432,6 +432,60 @@ export async function applySnapshot(snapshotId: string): Promise<{
   }, { timeout: 30000 });
 }
 
+/**
+ * APPLIED 스냅샷을 되돌린다. 해당 스냅샷으로 차감된 재고를 복원하고 이력을 삭제한다.
+ * 이후에 다른 작업(보충·재고조사 등)이 있었다면 재고는 복원되지만 이력 맥락이 달라질 수 있다.
+ */
+export async function rollbackSnapshot(
+  snapshotId: string,
+  hospitalId: string
+): Promise<{ reversedLines: number; totalRestored: number; hasSubsequentOps: boolean }> {
+  return prisma.$transaction(async (tx) => {
+    const snapshot = await tx.usageSnapshot.findUnique({ where: { id: snapshotId } });
+    if (!snapshot) throw new Error("스냅샷을 찾을 수 없습니다.");
+    if (snapshot.hospitalId !== hospitalId) throw new Error("권한이 없습니다.");
+    if (snapshot.status !== "APPLIED") throw new Error("반영된 스냅샷만 되돌릴 수 있습니다.");
+
+    const historyEntries = await tx.inventoryHistory.findMany({ where: { snapshotId } });
+
+    // 이 스냅샷 이후에 다른 작업이 있는지 확인
+    const cassetteIds = [...new Set(historyEntries.map((h) => h.cassetteId))];
+    const appliedAt = snapshot.appliedAt ?? snapshot.uploadedAt;
+    const subsequentOp = cassetteIds.length > 0
+      ? await tx.inventoryHistory.findFirst({
+          where: { cassetteId: { in: cassetteIds }, createdAt: { gt: appliedAt }, snapshotId: { not: snapshotId } },
+        })
+      : null;
+    const hasSubsequentOps = !!subsequentOp;
+
+    // 카세트별 복원량 집계 (changeQuantity가 음수이므로 -를 더함)
+    const restoreMap = new Map<string, number>();
+    for (const h of historyEntries) {
+      restoreMap.set(h.cassetteId, (restoreMap.get(h.cassetteId) ?? 0) + (-h.changeQuantity));
+    }
+
+    if (restoreMap.size > 0) {
+      const values = [...restoreMap.entries()].map(
+        ([id, restore]) => Prisma.sql`(${id}::text, ${restore}::float8)`
+      );
+      await tx.$executeRaw`
+        UPDATE "Cassette" AS c
+        SET "currentInventory" = c."currentInventory" + v.restore,
+            "updatedAt" = now()
+        FROM (VALUES ${Prisma.join(values)}) AS v(id, restore)
+        WHERE c.id = v.id
+      `;
+    }
+
+    await tx.inventoryHistory.deleteMany({ where: { snapshotId } });
+    await tx.usageSnapshotLine.updateMany({ where: { snapshotId }, data: { applied: false } });
+    await tx.usageSnapshot.update({ where: { id: snapshotId }, data: { status: "ROLLED_BACK" } });
+
+    const totalRestored = [...restoreMap.values()].reduce((s, v) => s + Math.max(0, v), 0);
+    return { reversedLines: historyEntries.length, totalRestored, hasSubsequentOps };
+  }, { timeout: 30000 });
+}
+
 /** PENDING 스냅샷 취소 (잘못 올린 파일 되돌리기). 레코드를 삭제해 fileHash 제약을 해제한다. */
 export async function cancelSnapshot(snapshotId: string): Promise<void> {
   const snapshot = await prisma.usageSnapshot.findUnique({

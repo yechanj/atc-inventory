@@ -135,7 +135,12 @@ export default function StocktakePage() {
     let result = rows;
     if (drugCodeQ.trim()) {
       const q = drugCodeQ.trim().toLowerCase();
-      result = result.filter((c) => c.drugCode?.toLowerCase().includes(q));
+      result = result.filter(
+        (c) =>
+          c.drugCode?.toLowerCase().includes(q) ||
+          c.drugName?.toLowerCase().includes(q) ||
+          String(c.cassetteNumber).includes(q)
+      );
     }
     if (onlyDiff) {
       result = result.filter((c) => {
@@ -158,8 +163,8 @@ export default function StocktakePage() {
         <div className="flex items-center gap-2 flex-wrap">
           <input
             ref={drugCodeInputRef}
-            className="input w-40"
-            placeholder="약품코드 필터  (/)"
+            className="input w-64"
+            placeholder="약품명 · 약품코드 · 카세트번호  (/)"
             value={drugCodeQ}
             onChange={(e) => setDrugCodeQ(e.target.value)}
             onKeyDown={(e) => {
@@ -268,6 +273,7 @@ export default function StocktakePage() {
               <thead>
                 <tr>
                   <th>카세트</th>
+                  <th>약품코드</th>
                   <th>약품</th>
                   <th className="num">계산재고</th>
                   <th className="num">실제재고</th>
@@ -285,6 +291,7 @@ export default function StocktakePage() {
                       <td className="font-medium">
                         {c.machine.name} #{c.cassetteNumber}
                       </td>
+                      <td className="text-slate-500 text-sm">{c.drugCode ?? "—"}</td>
                       <td>
                         {c.drugName}
                         {c.drugName === "(미등록)" && (

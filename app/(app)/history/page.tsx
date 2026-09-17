@@ -15,6 +15,7 @@ export default async function HistoryPage() {
         select: {
           cassetteNumber: true,
           drugName: true,
+          drugCode: true,
           machine: { select: { name: true } },
         },
       },

@@ -4,6 +4,32 @@ import { ok, fail, handle } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
+export async function PATCH(
+  req: Request,
+  { params }: { params: { id: string } }
+) {
+  return handle(async () => {
+    const hospitalId = await getCurrentHospitalId();
+    const { memo } = await req.json();
+
+    const entry = await prisma.inventoryHistory.findUnique({
+      where: { id: params.id },
+      include: { cassette: { select: { machine: { select: { hospitalId: true } } } } },
+    });
+
+    if (!entry) return fail("이력을 찾을 수 없습니다.", 404);
+    if (entry.cassette.machine.hospitalId !== hospitalId)
+      return fail("권한이 없습니다.", 403);
+
+    const updated = await prisma.inventoryHistory.update({
+      where: { id: params.id },
+      data: { memo: memo?.trim() || null },
+    });
+
+    return ok({ id: updated.id, memo: updated.memo });
+  });
+}
+
 export async function DELETE(
   _req: Request,
   { params }: { params: { id: string } }

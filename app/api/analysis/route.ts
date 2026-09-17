@@ -10,6 +10,7 @@ export interface AnalysisItem {
   machineName: string;
   cassetteNumber: number;
   drugName: string;
+  drugCode: string | null;
   dailyAvg30: number;       // 최근 30일 일평균 (전체 일수 기준)
   dailyAvg30Wd: number;     // 최근 30일 일평균 (평일 일수 기준)
   daysInWindow: number;     // 윈도우 내 실제 커버 일수
@@ -32,7 +33,7 @@ type TimelineMap = Map<string, { date: Date; usage: number }[]>;
 function computeAnalysisItems(
   timeline: TimelineMap,
   drugNameMap: Map<string, string>,
-  cassettes: { id: string; cassetteNumber: number; refillThreshold: number; machine: { name: string } }[]
+  cassettes: { id: string; cassetteNumber: number; refillThreshold: number; drugCode: string | null; machine: { name: string } }[]
 ): AnalysisItem[] {
   const cassetteMap = new Map(cassettes.map((c) => [`${c.machine.name}::${c.cassetteNumber}`, c]));
 
@@ -112,6 +113,7 @@ function computeAnalysisItems(
       machineName,
       cassetteNumber,
       drugName: domDrugName,
+      drugCode: cassette?.drugCode ?? null,
       dailyAvg30,
       dailyAvg30Wd,
       daysInWindow: Math.round(daysInWindow),
@@ -187,7 +189,7 @@ export async function GET() {
 
     const cassettes = await prisma.cassette.findMany({
       where: { machine: { hospitalId } },
-      select: { id: true, cassetteNumber: true, refillThreshold: true, machine: { select: { name: true } } },
+      select: { id: true, cassetteNumber: true, refillThreshold: true, drugCode: true, machine: { select: { name: true } } },
     });
 
     const items = computeAnalysisItems(timeline, drugNameMap, cassettes);
@@ -247,7 +249,7 @@ export async function POST(req: Request) {
 
     const cassettes = await prisma.cassette.findMany({
       where: { machine: { hospitalId } },
-      select: { id: true, cassetteNumber: true, refillThreshold: true, machine: { select: { name: true } } },
+      select: { id: true, cassetteNumber: true, refillThreshold: true, drugCode: true, machine: { select: { name: true } } },
     });
 
     const items = computeAnalysisItems(timeline, drugNameMap, cassettes);

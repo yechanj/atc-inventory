@@ -32,6 +32,7 @@ body {
   font-family: "SCDream", system-ui, -apple-system, sans-serif;
   font-weight: 500;
   font-feature-settings: "tnum" 1;
+  scrollbar-gutter: stable;
 }
 
 /* 테이블 */

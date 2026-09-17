@@ -19,8 +19,8 @@ export async function GET(req: Request) {
     if (q) {
       const asNum = Number(q);
       where.OR = [
-        { drugName: { contains: q } },
-        { drugCode: { contains: q } },
+        { drugName: { contains: q, mode: "insensitive" } },
+        { drugCode: { contains: q, mode: "insensitive" } },
         ...(Number.isFinite(asNum) ? [{ cassetteNumber: asNum }] : []),
       ];
     }
