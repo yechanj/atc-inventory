@@ -257,6 +257,10 @@ class App(tk.Tk):
 
         while self._running:
             try:
+                # heartbeat: 매 루프마다 GET으로 lastSyncedAt 갱신
+                get_server_state(cfg["api_url"], cfg["agent_key"])
+                self.after(0, self._update_last_sync)
+
                 rows = query_mdb(cfg["mdb_path"], cfg["mdb_password"], self._last_index)
                 if rows:
                     result = post_rows(cfg["api_url"], cfg["agent_key"], rows)
@@ -266,7 +270,6 @@ class App(tk.Tk):
                         f"+{len(rows)}건 → 처리 {data.get('processed', 0)}, "
                         f"차감 {data.get('matched', 0)}, 미매칭 {data.get('skipped', 0)}"
                     )
-                    self.after(0, self._update_last_sync)
             except urllib.error.HTTPError as e:
                 self._log(f"서버 오류 {e.code}: {e.reason}")
             except urllib.error.URLError as e:

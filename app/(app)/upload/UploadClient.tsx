@@ -631,6 +631,16 @@ function MdbSettingsCard({ initialState }: { initialState: MdbState | null }) {
   const [rotating, setRotating] = useState(false);
   const [copied, setCopied] = useState(false);
 
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      try {
+        const res = await apiFetch<MdbState>("/api/mdb-sync");
+        setState(res);
+      } catch {}
+    }, 15_000);
+    return () => clearInterval(interval);
+  }, []);
+
   async function rotate() {
     if (rotating) return;
     if (!confirm("API 키를 재발급하면 현재 실행 중인 exe는 즉시 인증 실패합니다.\nexe에 새 키를 입력해야 다시 작동합니다. 계속하시겠습니까?")) return;
@@ -653,7 +663,8 @@ function MdbSettingsCard({ initialState }: { initialState: MdbState | null }) {
     setTimeout(() => setCopied(false), 2000);
   }
 
-  const syncing = !!state?.lastSyncedAt;
+  const syncing = !!state?.lastSyncedAt &&
+    Date.now() - new Date(state.lastSyncedAt).getTime() < 30_000;
 
   return (
     <div className="card overflow-hidden">
