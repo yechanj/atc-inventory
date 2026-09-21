@@ -36,14 +36,41 @@ def save_config(cfg: dict):
         json.dump(cfg, f, ensure_ascii=False, indent=2)
 
 
-def get_last_index(api_url: str, agent_key: str) -> int:
+def get_server_state(api_url: str, agent_key: str) -> dict:
     req = urllib.request.Request(
         f"{api_url}/api/mdb-agent",
         headers={"x-agent-key": agent_key},
     )
     with urllib.request.urlopen(req, timeout=15) as resp:
         data = json.loads(resp.read().decode())
-        return data.get("data", {}).get("lastIndex", 0)
+        return data.get("data", {})
+
+
+def query_init_index(mdb_path: str, mdb_password: str, start_date: str) -> int:
+    import pyodbc
+    conn = pyodbc.connect(
+        f"DRIVER={{Microsoft Access Driver (*.mdb, *.accdb)}};"
+        f"DBQ={mdb_path};PWD={mdb_password};Mode=Read;",
+        autocommit=True,
+    )
+    cursor = conn.cursor()
+    cursor.execute(
+        f"SELECT MAX(history_index) FROM used_medicine_history WHERE fill_date < #{start_date}#"
+    )
+    row = cursor.fetchone()
+    conn.close()
+    return int(row[0]) if row[0] is not None else 0
+
+
+def set_last_index(api_url: str, agent_key: str, last_index: int) -> None:
+    payload = json.dumps({"lastIndex": last_index}).encode("utf-8")
+    req = urllib.request.Request(
+        f"{api_url}/api/mdb-agent",
+        data=payload,
+        headers={"x-agent-key": agent_key, "Content-Type": "application/json"},
+        method="PATCH",
+    )
+    urllib.request.urlopen(req, timeout=15)
 
 
 def query_mdb(mdb_path: str, mdb_password: str, last_index: int) -> list:
@@ -76,16 +103,22 @@ def query_mdb(mdb_path: str, mdb_password: str, last_index: int) -> list:
     return rows
 
 
+BATCH_SIZE = 300
+
 def post_rows(api_url: str, agent_key: str, rows: list) -> dict:
-    payload = json.dumps({"rows": rows}).encode("utf-8")
-    req = urllib.request.Request(
-        f"{api_url}/api/mdb-agent",
-        data=payload,
-        headers={"x-agent-key": agent_key, "Content-Type": "application/json"},
-        method="POST",
-    )
-    with urllib.request.urlopen(req, timeout=30) as resp:
-        return json.loads(resp.read().decode())
+    last_result = {}
+    for i in range(0, len(rows), BATCH_SIZE):
+        batch = rows[i:i + BATCH_SIZE]
+        payload = json.dumps({"rows": batch}).encode("utf-8")
+        req = urllib.request.Request(
+            f"{api_url}/api/mdb-agent",
+            data=payload,
+            headers={"x-agent-key": agent_key, "Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            last_result = json.loads(resp.read().decode())
+    return last_result
 
 
 class App(tk.Tk):
@@ -207,10 +240,18 @@ class App(tk.Tk):
 
     def _loop(self):
         cfg = self.cfg
-        # 서버에서 lastIndex 조회
         try:
-            self._last_index = get_last_index(cfg["api_url"], cfg["agent_key"])
+            state = get_server_state(cfg["api_url"], cfg["agent_key"])
+            self._last_index = state.get("lastIndex", 0)
+            start_date = state.get("startDate", "2026-09-22")
             self._log(f"서버 연결 완료 — lastIndex: {self._last_index:,}")
+
+            if self._last_index == 0:
+                self._log(f"초기 lastIndex 계산 중 (기준일: {start_date})…")
+                init_index = query_init_index(cfg["mdb_path"], cfg["mdb_password"], start_date)
+                set_last_index(cfg["api_url"], cfg["agent_key"], init_index)
+                self._last_index = init_index
+                self._log(f"초기 lastIndex 설정 완료: {init_index:,}")
         except Exception as e:
             self._log(f"서버 연결 실패: {e}")
 

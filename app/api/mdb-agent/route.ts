@@ -19,7 +19,23 @@ export async function GET(req: Request) {
     where: { id: state.id },
     data: { lastSyncedAt: new Date() },
   });
-  return ok({ lastIndex: state.lastIndex });
+  return ok({
+    lastIndex: state.lastIndex,
+    startDate: process.env.MDB_START_DATE ?? "2026-09-22",
+  });
+}
+
+/** 에이전트가 초기 lastIndex를 서버에 저장 */
+export async function PATCH(req: Request) {
+  const state = await findStateByKey(req);
+  if (!state) return fail("인증 실패", 401);
+  const body = await req.json() as { lastIndex: number };
+  if (typeof body.lastIndex !== "number") return fail("lastIndex 필드가 없습니다", 400);
+  await prisma.mdbSyncState.update({
+    where: { id: state.id },
+    data: { lastIndex: body.lastIndex },
+  });
+  return ok({ lastIndex: body.lastIndex });
 }
 
 /** 에이전트가 새 rows를 전송 → 재고 차감 */
