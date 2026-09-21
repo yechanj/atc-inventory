@@ -10,7 +10,8 @@
     "postinstall": "prisma generate",
     "db:push": "prisma db push",
     "db:seed": "tsx scripts/seed.ts",
-    "parse:check": "tsx scripts/parse-check.ts"
+    "parse:check": "tsx scripts/parse-check.ts",
+    "mdb:start": "tsx --env-file=.env scripts/mdb-poller.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",

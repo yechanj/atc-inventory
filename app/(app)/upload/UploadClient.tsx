@@ -7,12 +7,20 @@ import { useToast } from "@/components/Toast";
 import { ConfirmModal } from "@/components/Modal";
 import type { Preview, PreviewLine, UploadLogEntry } from "@/lib/types";
 
+interface MdbState {
+  agentKey: string | null;
+  lastIndex: number;
+  lastSyncedAt: string | null;
+}
+
 export function UploadClient({
   initialPending,
   initialRecentApplied,
+  initialMdbState,
 }: {
   initialPending: Preview | null;
   initialRecentApplied: UploadLogEntry[];
+  initialMdbState: MdbState | null;
 }) {
   const { toast } = useToast();
   const router = useRouter();
@@ -200,6 +208,8 @@ export function UploadClient({
         />
       ) : (
         <div className="space-y-4">
+          <MdbSettingsCard initialState={initialMdbState} />
+
           <div
             className={
               "card flex items-center gap-6 px-8 py-6 cursor-pointer transition " +
@@ -612,4 +622,105 @@ function SimpleTable({ lines, emptyMsg }: { lines: PreviewLine[]; emptyMsg: stri
 
 function Empty({ msg }: { msg: string }) {
   return <div className="p-8 text-center text-slate-400">{msg}</div>;
+}
+
+function MdbSettingsCard({ initialState }: { initialState: MdbState | null }) {
+  const { toast } = useToast();
+  const [state, setState] = useState<MdbState | null>(initialState);
+  const [open, setOpen] = useState(true);
+  const [rotating, setRotating] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  async function rotate() {
+    if (rotating) return;
+    if (!confirm("API 키를 재발급하면 현재 실행 중인 exe는 즉시 인증 실패합니다.\nexe에 새 키를 입력해야 다시 작동합니다. 계속하시겠습니까?")) return;
+    setRotating(true);
+    try {
+      const res = await apiFetch<{ agentKey: string }>("/api/mdb-sync", { method: "POST" });
+      setState((prev) => prev ? { ...prev, agentKey: res.agentKey } : prev);
+      toast("API 키가 재발급되었습니다. exe에 새 키를 입력하세요.", "success");
+    } catch (e) {
+      toast((e as Error).message, "error");
+    } finally {
+      setRotating(false);
+    }
+  }
+
+  async function copyKey() {
+    if (!state?.agentKey) return;
+    await navigator.clipboard.writeText(state.agentKey);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  const syncing = !!state?.lastSyncedAt;
+
+  return (
+    <div className="card overflow-hidden">
+      <button
+        className="flex w-full items-center justify-between px-5 py-3.5 text-left hover:bg-slate-50 transition"
+        onClick={() => setOpen((v) => !v)}
+      >
+        <div className="flex items-center gap-2.5">
+          <svg className="h-4 w-4 text-slate-400" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 5.625c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125" />
+          </svg>
+          <span className="font-semibold text-slate-700 text-sm">ATC 자동차감 설정</span>
+          {syncing ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              연동 중
+            </span>
+          ) : (
+            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500">미연동</span>
+          )}
+        </div>
+        <svg
+          className={`h-4 w-4 text-slate-400 transition-transform ${open ? "rotate-180" : ""}`}
+          fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="m19 9-7 7-7-7" />
+        </svg>
+      </button>
+
+      {open && state && (
+        <div className="border-t border-slate-100 px-5 py-4 space-y-4">
+          <div>
+            <label className="label block text-xs mb-1.5">에이전트 API 키 <span className="text-slate-400 font-normal">(atc_sync.exe 에 입력)</span></label>
+            <div className="flex items-center gap-2">
+              <code className="flex-1 rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 font-mono text-xs text-slate-700 break-all select-all">
+                {state.agentKey ?? "생성 중..."}
+              </code>
+              <button
+                onClick={copyKey}
+                disabled={!state.agentKey}
+                className="shrink-0 rounded-lg px-3 py-2 text-xs font-medium ring-1 ring-slate-200 text-slate-600 hover:bg-slate-50 transition min-w-[52px]"
+              >
+                {copied ? "복사됨" : "복사"}
+              </button>
+            </div>
+          </div>
+
+          {(state.lastIndex > 0 || state.lastSyncedAt) && (
+            <div className="rounded-lg bg-slate-50 px-4 py-3 text-xs text-slate-500 flex gap-5 flex-wrap">
+              <span><span className="text-slate-400">기준 index</span> <b className="text-slate-700">{state.lastIndex.toLocaleString()}</b></span>
+              {state.lastSyncedAt && (
+                <span><span className="text-slate-400">마지막 동기화</span> <b className="text-slate-700">{fmtDateTime(state.lastSyncedAt)}</b></span>
+              )}
+            </div>
+          )}
+
+          <div className="flex justify-end">
+            <button
+              className="text-xs text-slate-400 underline hover:text-rose-500 transition"
+              onClick={rotate}
+              disabled={rotating}
+            >
+              {rotating ? "재발급 중…" : "API 키 재발급"}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }

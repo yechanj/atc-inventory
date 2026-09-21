@@ -1,0 +1,7 @@
+{
+  "mdb_path": "C:/Yechan/정리/ATC재고/sample-data/db/Used_Medicine_History.mdb",
+  "mdb_password": "JVDV",
+  "api_url": "https://atc-inventory.vercel.app",
+  "agent_key": "pharmacy-2026-xk93mq",
+  "interval_seconds": 5
+}

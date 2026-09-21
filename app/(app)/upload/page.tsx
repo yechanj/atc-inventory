@@ -1,13 +1,15 @@
 import { prisma } from "@/lib/prisma";
 import { getCurrentHospitalId } from "@/lib/hospital";
 import { getSnapshotPreview } from "@/lib/services/snapshotService";
+import { ensureSyncState } from "@/lib/services/mdbSyncService";
 import { UploadClient } from "./UploadClient";
 import type { Preview, UploadLogEntry } from "@/lib/types";
 
 export default async function UploadPage() {
   const hospitalId = await getCurrentHospitalId();
+  await ensureSyncState(hospitalId);
 
-  const [pendingSnap, appliedSnaps] = await Promise.all([
+  const [pendingSnap, appliedSnaps, mdbState] = await Promise.all([
     prisma.usageSnapshot.findFirst({
       where: { hospitalId, status: "PENDING" },
       orderBy: { uploadedAt: "desc" },
@@ -24,6 +26,10 @@ export default async function UploadPage() {
         uploadedAt: true,
       },
     }),
+    prisma.mdbSyncState.findUnique({
+      where: { hospitalId },
+      select: { agentKey: true, lastIndex: true, lastSyncedAt: true },
+    }),
   ]);
 
   const rawPending = pendingSnap ? await getSnapshotPreview(pendingSnap.id) : null;
@@ -39,20 +45,31 @@ export default async function UploadPage() {
       }
     : null;
 
-  const recentApplied: UploadLogEntry[] = appliedSnaps.map((e) => ({
-    id: e.id,
-    originalFilename: e.originalFilename,
-    appliedAt: e.appliedAt instanceof Date ? e.appliedAt.toISOString() : (e.appliedAt as string | null),
-    queryPeriodStart: e.queryPeriodStart instanceof Date
-      ? e.queryPeriodStart.toISOString().slice(0, 10)
-      : (e.queryPeriodStart as string | null),
-    uploadedAt: e.uploadedAt instanceof Date ? e.uploadedAt.toISOString() : (e.uploadedAt as string),
+  const recentApplied: UploadLogEntry[] = appliedSnaps.map((snap) => ({
+    id: snap.id,
+    originalFilename: snap.originalFilename,
+    appliedAt: snap.appliedAt instanceof Date ? snap.appliedAt.toISOString() : (snap.appliedAt as string | null),
+    queryPeriodStart: snap.queryPeriodStart instanceof Date
+      ? snap.queryPeriodStart.toISOString().slice(0, 10)
+      : (snap.queryPeriodStart as string | null),
+    uploadedAt: snap.uploadedAt instanceof Date ? snap.uploadedAt.toISOString() : (snap.uploadedAt as string),
   }));
 
   return (
     <UploadClient
       initialPending={pending}
       initialRecentApplied={recentApplied}
+      initialMdbState={
+        mdbState
+          ? {
+              agentKey: mdbState.agentKey ?? null,
+              lastIndex: mdbState.lastIndex,
+              lastSyncedAt: mdbState.lastSyncedAt instanceof Date
+                ? mdbState.lastSyncedAt.toISOString()
+                : (mdbState.lastSyncedAt as string | null),
+            }
+          : null
+      }
     />
   );
 }

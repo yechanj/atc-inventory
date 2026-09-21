@@ -17,3 +17,8 @@ prisma/dev.db-journal
 !public/fonts/*.ttf
 
 sample-data
+
+# PyInstaller agent 빌드 결과물
+agent/dist/
+agent/*.spec
+agent/__pycache__/

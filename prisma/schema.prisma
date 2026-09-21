@@ -17,9 +17,10 @@ model Hospital {
   name      String
   createdAt DateTime @default(now())
 
-  machines  Machine[]
-  snapshots UsageSnapshot[]
-  users     User[]
+  machines     Machine[]
+  snapshots    UsageSnapshot[]
+  users        User[]
+  mdbSyncState MdbSyncState?
 }
 
 model User {
@@ -109,6 +110,18 @@ model UsageSnapshotLine {
 
   @@index([snapshotId])
   @@index([cassetteId])
+}
+
+model MdbSyncState {
+  id           String    @id @default(cuid())
+  hospitalId   String    @unique
+  agentKey     String?   @unique
+  lastIndex    Int       @default(0)
+  lastSyncedAt DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  hospital     Hospital  @relation(fields: [hospitalId], references: [id])
 }
 
 model InventoryHistory {
