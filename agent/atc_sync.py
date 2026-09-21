@@ -55,7 +55,7 @@ def query_mdb(mdb_path: str, mdb_password: str, last_index: int) -> list:
     )
     cursor = conn.cursor()
     cursor.execute(
-        "SELECT history_index, fill_date, canister, mnemonic, total_used_qty "
+        "SELECT history_index, fill_date, canister, mnemonic, commercial_name, total_used_qty "
         "FROM used_medicine_history "
         "WHERE history_index > ? AND canister > 0 "
         "ORDER BY history_index ASC",
@@ -68,8 +68,9 @@ def query_mdb(mdb_path: str, mdb_password: str, last_index: int) -> list:
             "historyIndex": int(r[0]),
             "fillDate": fd.strftime("%Y-%m-%d") if fd else None,
             "canister": int(r[2]),
-            "mnemonic": str(r[3] or ""),
-            "totalUsedQty": float(r[4] or 0),
+            "drugCode": str(r[3] or ""),
+            "drugName": str(r[4] or ""),
+            "totalUsedQty": float(r[5] or 0),
         })
     conn.close()
     return rows

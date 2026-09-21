@@ -57,7 +57,10 @@ export async function applyMdbRows(
     return { newRows: 0, processed: 0, matched: 0, skipped: 0, lastIndex: state?.lastIndex ?? 0 };
   }
 
-  const processableRows = rows.filter((r) => r.fillDate != null && r.fillDate >= MDB_START_DATE);
+  // canister 0 = STS, 차감 제외
+  const processableRows = rows.filter(
+    (r) => r.canister !== 0 && r.fillDate != null && r.fillDate >= MDB_START_DATE
+  );
   const newLastIndex = rows[rows.length - 1].historyIndex;
 
   let matched = 0;
@@ -78,17 +81,31 @@ export async function applyMdbRows(
   });
   const cassetteMap = new Map(cassettes.map((c) => [c.cassetteNumber, c]));
 
+  // 카세트번호별 누적 차감량 + 약품코드/약품명
   const deductMap = new Map<number, number>();
+  const drugCodeMap = new Map<number, string>();
+  const drugNameMap = new Map<number, string>();
   for (const row of processableRows) {
     deductMap.set(row.canister, (deductMap.get(row.canister) ?? 0) + row.totalUsedQty);
+    drugCodeMap.set(row.canister, row.drugCode);
+    drugNameMap.set(row.canister, row.drugName);
   }
 
   const cassetteUpdates: { id: string; after: number }[] = [];
   const historyData: Prisma.InventoryHistoryCreateManyInput[] = [];
+  const toCreate: { cassetteNumber: number; deduct: number; drugCode: string; drugName: string }[] = [];
 
   for (const [cassetteNumber, deduct] of deductMap) {
     const cassette = cassetteMap.get(cassetteNumber);
-    if (!cassette) { skipped++; continue; }
+    if (!cassette) {
+      toCreate.push({
+        cassetteNumber,
+        deduct,
+        drugCode: drugCodeMap.get(cassetteNumber) ?? "",
+        drugName: drugNameMap.get(cassetteNumber) ?? `카세트 ${cassetteNumber}`,
+      });
+      continue;
+    }
     const before = cassette.currentInventory;
     const after = before - deduct;
     cassetteUpdates.push({ id: cassette.id, after });
@@ -102,7 +119,36 @@ export async function applyMdbRows(
     matched++;
   }
 
+  // 자동생성할 카세트가 있으면 machine 조회
+  let machineId: string | null = null;
+  if (toCreate.length > 0) {
+    const machine = await prisma.machine.findFirst({ where: { hospitalId } });
+    if (machine) {
+      machineId = machine.id;
+    } else {
+      skipped += toCreate.length;
+      toCreate.length = 0;
+    }
+  }
+
+  const INITIAL_INV = 1000;
+
   await prisma.$transaction(async (tx) => {
+    // 신규 카세트 자동생성 (초기재고 1000에서 차감 시작)
+    for (const { cassetteNumber, deduct, drugCode, drugName } of toCreate) {
+      const created = await tx.cassette.create({
+        data: { machineId: machineId!, cassetteNumber, drugCode: drugCode || null, drugName, currentInventory: INITIAL_INV - deduct },
+      });
+      historyData.push({
+        cassetteId: created.id,
+        type: "MDB_AUTO",
+        quantityBefore: INITIAL_INV,
+        changeQuantity: -deduct,
+        quantityAfter: INITIAL_INV - deduct,
+      });
+      matched++;
+    }
+
     if (cassetteUpdates.length > 0) {
       const values = cassetteUpdates.map(({ id, after }) =>
         Prisma.sql`(${id}::text, ${after}::float8)`
@@ -113,6 +159,8 @@ export async function applyMdbRows(
         FROM (VALUES ${Prisma.join(values)}) AS v(id, after)
         WHERE c.id = v.id
       `;
+    }
+    if (historyData.length > 0) {
       await tx.inventoryHistory.createMany({ data: historyData });
     }
     await tx.mdbSyncState.upsert({

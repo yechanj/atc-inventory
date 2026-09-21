@@ -7,6 +7,7 @@ import type { HistoryRow } from "@/lib/types";
 const TYPES = [
   { key: "ALL", label: "전체" },
   { key: "USAGE", label: "사용량" },
+  { key: "MDB_AUTO", label: "자동차감" },
   { key: "REFILL", label: "보충" },
   { key: "MANUAL_ADJUSTMENT", label: "실재고 보정" },
   { key: "STOCKTAKE", label: "재고조사" },
@@ -15,6 +16,7 @@ const TYPES = [
 
 const TYPE_LABEL: Record<string, string> = {
   USAGE: "사용량",
+  MDB_AUTO: "자동차감",
   REFILL: "보충",
   MANUAL_ADJUSTMENT: "실재고 보정",
   STOCKTAKE: "재고조사",
@@ -23,6 +25,7 @@ const TYPE_LABEL: Record<string, string> = {
 
 const TYPE_BADGE: Record<string, string> = {
   USAGE: "bg-rose-50 text-rose-700",
+  MDB_AUTO: "bg-orange-50 text-orange-700",
   REFILL: "bg-emerald-50 text-emerald-700",
   MANUAL_ADJUSTMENT: "bg-blue-50 text-blue-700",
   STOCKTAKE: "bg-violet-50 text-violet-700",

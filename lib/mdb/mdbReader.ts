@@ -8,7 +8,8 @@ export interface MdbRow {
   historyIndex: number;
   fillDate: string | null; // 'YYYY-MM-DD'
   canister: number;
-  mnemonic: string;
+  drugCode: string;   // mnemonic (약품코드)
+  drugName: string;   // commercial_name (약품명)
   totalUsedQty: number;
 }
 
