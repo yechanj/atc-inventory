@@ -17,6 +17,9 @@ function generateKey(): string {
 
 /** MdbSyncState가 없으면 agentKey를 자동 생성해 만든다. 이미 있으면 agentKey만 채운다. */
 export async function ensureSyncState(hospitalId: string): Promise<void> {
+  const hospital = await prisma.hospital.findUnique({ where: { id: hospitalId } });
+  if (!hospital) return;
+
   const existing = await prisma.mdbSyncState.findUnique({ where: { hospitalId } });
   if (existing) {
     if (!existing.agentKey) {
