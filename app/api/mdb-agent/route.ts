@@ -11,10 +11,14 @@ async function findStateByKey(req: Request) {
   return prisma.mdbSyncState.findUnique({ where: { agentKey: key } });
 }
 
-/** 에이전트가 현재 lastIndex를 조회 */
+/** 에이전트가 현재 lastIndex를 조회 (heartbeat 겸용) */
 export async function GET(req: Request) {
   const state = await findStateByKey(req);
   if (!state) return fail("인증 실패", 401);
+  await prisma.mdbSyncState.update({
+    where: { id: state.id },
+    data: { lastSyncedAt: new Date() },
+  });
   return ok({ lastIndex: state.lastIndex });
 }
 
