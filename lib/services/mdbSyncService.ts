@@ -134,6 +134,20 @@ export async function applyMdbRows(
   const INITIAL_INV = 1000;
 
   await prisma.$transaction(async (tx) => {
+    // MDB raw 데이터 로깅 (분석용)
+    await tx.mdbUsageLog.createMany({
+      data: processableRows.map((r) => ({
+        hospitalId,
+        historyIndex: r.historyIndex,
+        fillDate: r.fillDate!,
+        canister: r.canister,
+        drugCode: r.drugCode,
+        drugName: r.drugName,
+        qty: r.totalUsedQty,
+      })),
+      skipDuplicates: true,
+    });
+
     // 신규 카세트 자동생성 (초기재고 1000에서 차감 시작)
     for (const { cassetteNumber, deduct, drugCode, drugName } of toCreate) {
       const created = await tx.cassette.create({

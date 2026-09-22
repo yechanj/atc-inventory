@@ -21,6 +21,7 @@ model Hospital {
   snapshots    UsageSnapshot[]
   users        User[]
   mdbSyncState MdbSyncState?
+  mdbUsageLogs MdbUsageLog[]
 }
 
 model User {
@@ -122,6 +123,22 @@ model MdbSyncState {
   updatedAt    DateTime  @updatedAt
 
   hospital     Hospital  @relation(fields: [hospitalId], references: [id])
+}
+
+model MdbUsageLog {
+  id           String   @id @default(cuid())
+  hospitalId   String
+  historyIndex Int
+  fillDate     String   // 'YYYY-MM-DD'
+  canister     Int
+  drugCode     String
+  drugName     String
+  qty          Float
+
+  hospital Hospital @relation(fields: [hospitalId], references: [id])
+
+  @@unique([hospitalId, historyIndex])
+  @@index([hospitalId, fillDate])
 }
 
 model InventoryHistory {

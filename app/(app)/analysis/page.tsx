@@ -77,13 +77,18 @@ function DayOfWeekChart({ data, excludeWeekends }: { data: number[]; excludeWeek
   );
 }
 
-type Phase = "results" | "upload";
+type Phase = "results" | "upload" | "mdb";
 
 export default function AnalysisPage() {
   const { toast } = useToast();
   const inputRef = useRef<HTMLInputElement>(null);
 
   const [phase, setPhase] = useState<Phase>("upload");
+  const [mdbStart, setMdbStart] = useState(() => {
+    const d = new Date(); d.setDate(d.getDate() - 30);
+    return d.toISOString().split("T")[0];
+  });
+  const [mdbEnd, setMdbEnd] = useState(new Date().toISOString().split("T")[0]);
   const [results, setResults] = useState<AnalysisItem[]>([]);
 
   const [fileEntries, setFileEntries] = useState<FileEntry[]>([]);
@@ -177,6 +182,25 @@ export default function AnalysisPage() {
     await analyzeEntries(fileEntries);
   }, [analyzing, fileEntries, analyzeEntries]);
 
+  const runMdbAnalysis = useCallback(async () => {
+    if (analyzing) return;
+    setAnalyzing(true);
+    try {
+      const data = await apiFetch<AnalysisItem[]>(
+        `/api/analysis/mdb?startDate=${mdbStart}&endDate=${mdbEnd}`
+      );
+      setResults(data);
+      setUsedFiles([]);
+      setSelected(data[0] ?? null);
+      setSearch("");
+      setPhase("results");
+    } catch (e) {
+      toast((e as Error).message, "error");
+    } finally {
+      setAnalyzing(false);
+    }
+  }, [analyzing, mdbStart, mdbEnd, toast]);
+
   const applyThresholds = useCallback(async () => {
     if (applying) return;
     setApplying(true);
@@ -245,6 +269,59 @@ export default function AnalysisPage() {
     );
   });
 
+  // ── MDB 날짜 분석 ─────────────────────────────────────────────────
+  if (phase === "mdb") {
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center gap-3">
+          {results.length > 0 && (
+            <button className="btn-secondary btn-xs" onClick={() => setPhase("results")}>
+              ← 분석 결과로
+            </button>
+          )}
+          <h1 className="text-xl font-bold tracking-tight">사용량 분석</h1>
+        </div>
+
+        {/* 탭 */}
+        <div className="flex gap-1 rounded-lg bg-slate-100 p-1 w-fit">
+          <button className="rounded-md px-4 py-1.5 text-sm font-medium text-slate-500 hover:text-slate-700 transition"
+            onClick={() => setPhase("upload")}>파일 업로드</button>
+          <button className="rounded-md bg-white px-4 py-1.5 text-sm font-medium text-brand-600 shadow-sm">
+            MDB 데이터 분석</button>
+        </div>
+
+        <div className="card space-y-5 p-6">
+          <p className="text-sm text-slate-600">
+            자동 연동된 MDB 데이터를 기반으로 날짜 범위를 지정해 사용량을 분석합니다.
+          </p>
+          <div className="flex flex-wrap items-end gap-4">
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium text-slate-500">시작일</label>
+              <input type="date" className="input text-sm" value={mdbStart}
+                onChange={(e) => setMdbStart(e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium text-slate-500">종료일</label>
+              <input type="date" className="input text-sm" value={mdbEnd}
+                onChange={(e) => setMdbEnd(e.target.value)} />
+            </div>
+            <button className="btn-primary" disabled={analyzing} onClick={runMdbAnalysis}>
+              {analyzing ? (
+                <span className="flex items-center gap-2">
+                  <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4Z" />
+                  </svg>
+                  분석 중…
+                </span>
+              ) : "분석하기"}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // ── 파일 업로드 ───────────────────────────────────────────────────
   if (phase === "upload") {
     return (
@@ -258,6 +335,14 @@ export default function AnalysisPage() {
             )}
             <h1 className="text-xl font-bold tracking-tight">사용량 분석</h1>
           </div>
+        </div>
+
+        {/* 탭 */}
+        <div className="flex gap-1 rounded-lg bg-slate-100 p-1 w-fit">
+          <button className="rounded-md bg-white px-4 py-1.5 text-sm font-medium text-brand-600 shadow-sm">
+            파일 업로드</button>
+          <button className="rounded-md px-4 py-1.5 text-sm font-medium text-slate-500 hover:text-slate-700 transition"
+            onClick={() => setPhase("mdb")}>MDB 데이터 분석</button>
         </div>
 
         <div
@@ -355,7 +440,7 @@ export default function AnalysisPage() {
           </span>
         )}
 
-        {/* 파일로 재분석 버튼 */}
+        {/* 재분석 버튼들 */}
         <button
           className="btn-secondary btn-xs flex items-center gap-1.5"
           onClick={() => { setFileEntries([]); setPhase("upload"); }}
@@ -364,6 +449,15 @@ export default function AnalysisPage() {
             <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" />
           </svg>
           파일 업로드
+        </button>
+        <button
+          className="btn-secondary btn-xs flex items-center gap-1.5"
+          onClick={() => setPhase("mdb")}
+        >
+          <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 2.625c0 2.278-3.694 4.125-8.25 4.125S3.75 11.278 3.75 9m16.5 2.625c0 2.278-3.694 4.125-8.25 4.125S3.75 13.903 3.75 11.625" />
+          </svg>
+          MDB로 분석
         </button>
 
         {/* 사용된 파일 목록 */}
