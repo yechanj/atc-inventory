@@ -104,6 +104,51 @@ def query_mdb(mdb_path: str, mdb_password: str, last_index: int) -> list:
 
 
 BATCH_SIZE = 300
+BACKFILL_START = "2026-01-01"
+
+
+def query_backfill_rows(mdb_path: str, mdb_password: str, end_index: int) -> list:
+    import pyodbc
+    conn = pyodbc.connect(
+        f"DRIVER={{Microsoft Access Driver (*.mdb, *.accdb)}};"
+        f"DBQ={mdb_path};PWD={mdb_password};Mode=Read;",
+        autocommit=True,
+    )
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT history_index, fill_date, canister, mnemonic, commercial_name, total_used_qty "
+        "FROM used_medicine_history "
+        f"WHERE fill_date >= #{BACKFILL_START}# AND history_index <= ? AND canister > 0 "
+        "ORDER BY history_index ASC",
+        (end_index,),
+    )
+    rows = []
+    for r in cursor.fetchall():
+        fd = r[1]
+        rows.append({
+            "historyIndex": int(r[0]),
+            "fillDate": fd.strftime("%Y-%m-%d") if fd else None,
+            "canister": int(r[2]),
+            "drugCode": str(r[3] or ""),
+            "drugName": str(r[4] or ""),
+            "totalUsedQty": float(r[5] or 0),
+        })
+    conn.close()
+    return rows
+
+
+def post_backfill_rows(api_url: str, agent_key: str, rows: list) -> None:
+    for i in range(0, len(rows), BATCH_SIZE):
+        batch = rows[i:i + BATCH_SIZE]
+        payload = json.dumps({"rows": batch, "backfill": True}).encode("utf-8")
+        req = urllib.request.Request(
+            f"{api_url}/api/mdb-agent",
+            data=payload,
+            headers={"x-agent-key": agent_key, "Content-Type": "application/json"},
+            method="POST",
+        )
+        urllib.request.urlopen(req, timeout=30)
+
 
 def post_rows(api_url: str, agent_key: str, rows: list) -> dict:
     last_result = {}
@@ -244,6 +289,7 @@ class App(tk.Tk):
             state = get_server_state(cfg["api_url"], cfg["agent_key"])
             self._last_index = state.get("lastIndex", 0)
             start_date = state.get("startDate", "2026-09-22")
+            needs_backfill = state.get("needsBackfill", False)
             self._log(f"서버 연결 완료 — lastIndex: {self._last_index:,}")
 
             if self._last_index == 0:
@@ -252,6 +298,16 @@ class App(tk.Tk):
                 set_last_index(cfg["api_url"], cfg["agent_key"], init_index)
                 self._last_index = init_index
                 self._log(f"초기 lastIndex 설정 완료: {init_index:,}")
+                needs_backfill = True
+
+            if needs_backfill:
+                self._log(f"과거 데이터 백필 중 ({BACKFILL_START} ~ index {self._last_index:,})…")
+                backfill_rows = query_backfill_rows(cfg["mdb_path"], cfg["mdb_password"], self._last_index)
+                if backfill_rows:
+                    post_backfill_rows(cfg["api_url"], cfg["agent_key"], backfill_rows)
+                    self._log(f"백필 완료: {len(backfill_rows):,}건")
+                else:
+                    self._log("백필할 데이터 없음")
         except Exception as e:
             self._log(f"서버 연결 실패: {e}")
 

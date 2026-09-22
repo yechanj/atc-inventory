@@ -186,3 +186,29 @@ export async function applyMdbRows(
 
   return { newRows: rows.length, processed: processableRows.length, matched, skipped, lastIndex: newLastIndex };
 }
+
+/**
+ * 백필 전용: MdbUsageLog에만 기록. 카세트 차감·lastIndex 업데이트 없음.
+ */
+export async function backfillMdbRows(
+  hospitalId: string,
+  rows: MdbRow[]
+): Promise<{ logged: number }> {
+  const processable = rows.filter((r) => r.canister !== 0 && r.fillDate != null);
+  if (processable.length === 0) return { logged: 0 };
+
+  await prisma.mdbUsageLog.createMany({
+    data: processable.map((r) => ({
+      hospitalId,
+      historyIndex: r.historyIndex,
+      fillDate: r.fillDate!,
+      canister: r.canister,
+      drugCode: r.drugCode,
+      drugName: r.drugName,
+      qty: r.totalUsedQty,
+    })),
+    skipDuplicates: true,
+  });
+
+  return { logged: processable.length };
+}

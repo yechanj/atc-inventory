@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { ok, fail } from "@/lib/api";
-import { applyMdbRows } from "@/lib/services/mdbSyncService";
+import { applyMdbRows, backfillMdbRows } from "@/lib/services/mdbSyncService";
 import type { MdbRow } from "@/lib/mdb/mdbReader";
 
 export const dynamic = "force-dynamic";
@@ -15,13 +15,14 @@ async function findStateByKey(req: Request) {
 export async function GET(req: Request) {
   const state = await findStateByKey(req);
   if (!state) return fail("인증 실패", 401);
-  await prisma.mdbSyncState.update({
-    where: { id: state.id },
-    data: { lastSyncedAt: new Date() },
-  });
+  const [, logCount] = await Promise.all([
+    prisma.mdbSyncState.update({ where: { id: state.id }, data: { lastSyncedAt: new Date() } }),
+    prisma.mdbUsageLog.count({ where: { hospitalId: state.hospitalId } }),
+  ]);
   return ok({
     lastIndex: state.lastIndex,
     startDate: process.env.MDB_START_DATE ?? "2026-09-22",
+    needsBackfill: logCount === 0,
   });
 }
 
@@ -38,14 +39,18 @@ export async function PATCH(req: Request) {
   return ok({ lastIndex: body.lastIndex });
 }
 
-/** 에이전트가 새 rows를 전송 → 재고 차감 */
+/** 에이전트가 새 rows를 전송 → 재고 차감. backfill:true 시 로그만 기록 */
 export async function POST(req: Request) {
   const state = await findStateByKey(req);
   if (!state) return fail("인증 실패", 401);
 
-  const body = await req.json() as { rows: MdbRow[] };
+  const body = await req.json() as { rows: MdbRow[]; backfill?: boolean };
   if (!Array.isArray(body.rows)) return fail("rows 필드가 없습니다", 400);
 
+  if (body.backfill) {
+    const result = await backfillMdbRows(state.hospitalId, body.rows);
+    return ok(result);
+  }
   const result = await applyMdbRows(state.hospitalId, body.rows);
   return ok(result);
 }
