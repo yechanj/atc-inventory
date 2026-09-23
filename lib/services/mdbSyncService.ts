@@ -119,16 +119,12 @@ export async function applyMdbRows(
     matched++;
   }
 
-  // 자동생성할 카세트가 있으면 machine 조회
+  // 자동생성할 카세트가 있으면 machine 조회 (없으면 자동생성)
   let machineId: string | null = null;
   if (toCreate.length > 0) {
-    const machine = await prisma.machine.findFirst({ where: { hospitalId } });
-    if (machine) {
-      machineId = machine.id;
-    } else {
-      skipped += toCreate.length;
-      toCreate.length = 0;
-    }
+    const machine = await prisma.machine.findFirst({ where: { hospitalId } })
+      ?? await prisma.machine.create({ data: { hospitalId, name: "ATC" } });
+    machineId = machine.id;
   }
 
   const INITIAL_INV = 1000;
